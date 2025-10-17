@@ -1,0 +1,33 @@
+@use './variables.scss' as *;
+
+
+// Mobile First 方式（推薦）
+@mixin xs-width {
+    @media (max-width: $breakpoint-xs) {
+      @content;
+    }
+  }
+  
+  @mixin sm-width {
+    @media (max-width: $breakpoint-sm) and (min-width: ($breakpoint-xs - 1px)) {
+      @content;
+    }
+  }
+  
+  @mixin md-width {
+    @media (max-width: $breakpoint-md) and (min-width: ($breakpoint-sm - 1px)) {
+      @content;
+    }
+  }
+  
+  @mixin lg-width {
+    @media (max-width: $breakpoint-lg) and (min-width: ($breakpoint-md - 1px)) {
+      @content;
+    }
+  }
+  
+  @mixin xl-width {
+    @media (min-width: $breakpoint-xl) {
+      @content;
+    }
+  }
