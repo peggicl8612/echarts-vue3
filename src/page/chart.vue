@@ -2,6 +2,9 @@
 import * as echarts from "echarts";
 import { ElMessage } from "element-plus";
 import { ref, watch, reactive, onMounted, onBeforeUnmount } from "vue";
+import { useRoute } from "vue-router";
+
+const route = useRoute();
 
 const chartRef = ref(null);
 let chartInstance: echarts.ECharts | null = null;
@@ -47,6 +50,15 @@ const renderChart = () => {
       }),
     },
     legend: {},
+    // 網格配置
+    grid: {
+      top: 100,
+      right: 60,
+      bottom: 80,
+      left: 60,
+      // 避免座標及文字跑版
+      containLabel: true,
+    },
     // 工具箱
     toolbox: {
       show: true,
@@ -145,14 +157,6 @@ const handleClick = (type: string) => {
   ElMessage.success(`已切換為${type}圖表`);
 };
 
-// 更新資料
-const updateData = () => {
-  for (let i = 0; i < chartData.categories.length; i++) {
-    chartData.values[i] = Math.round(Math.random() * 40);
-  }
-  renderChart();
-};
-
 watch(currentType, () => {
   renderChart();
 });
@@ -164,6 +168,11 @@ const handleResize = () => {
 
 // 初始化
 onMounted(() => {
+  // 從 URL query 參數讀取圖表類型
+  const queryType = route.query.type as string;
+  if (queryType && chartTypes.includes(queryType)) {
+    currentType.value = queryType;
+  }
   initChart();
   window.addEventListener("resize", handleResize);
 });
@@ -186,7 +195,6 @@ onBeforeUnmount(() => {
       >
         {{ type }}
       </button>
-      <button class="update-btn" @click="updateData">更新資料</button>
     </div>
 
     <div

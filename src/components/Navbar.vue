@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 
 const router = useRouter();
 const route = useRoute();
 
 // 根據當前路由設定初始的 activeIndex
-/* const getIndexByPath = (path: string): string => {
+const getIndexByPath = (path: string): string => {
   switch (path) {
     case "/":
       return "1";
@@ -14,15 +14,17 @@ const route = useRoute();
       return "2";
     case "/chart2":
       return "3";
+    case "/geo":
+      return "4";
     default:
       return "1";
   }
-}; */
+};
 
 // 使用 computed 確保 activeIndex 始終與路由同步，避免閃爍
-// const activeIndex = computed(() => getIndexByPath(route.path));
+const activeIndex = computed(() => getIndexByPath(route.path));
 
-const activeIndex = ref(route.name || route.path);
+// const activeIndex = ref(route.name || route.path);
 
 const handleSelect = (index: string) => {
   switch (index) {
@@ -34,6 +36,9 @@ const handleSelect = (index: string) => {
       break;
     case "3":
       router.push("/chart2");
+      break;
+    case "4":
+      router.push("/geo");
       break;
   }
 };
@@ -52,6 +57,7 @@ const handleSelect = (index: string) => {
           <el-menu-item index="1">Home</el-menu-item>
           <el-menu-item index="2">echarts1</el-menu-item>
           <el-menu-item index="3">echarts2</el-menu-item>
+          <el-menu-item index="4">geo</el-menu-item>
         </el-menu>
 
         <div class="user"></div>

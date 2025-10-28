@@ -17,6 +17,11 @@ const router = createRouter({
             path: "/chart2",
             name: "Chart2",
             component: () => import("../page/my-echarts.vue")
+        },
+        {
+            path: "/geo",
+            name: "Geo",
+            component: () => import("../page/geo.vue")
         }
     ]
 })

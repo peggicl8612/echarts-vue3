@@ -10,18 +10,21 @@ const chartTypes = [
     icon: "mdi-chart-line",
     description: "展示數據趨勢變化，支援平滑曲線、區域填充等效果",
     path: "/chart",
+    chartType: "line",
   },
   {
     title: "長條圖",
     icon: "mdi-chart-bar",
     description: "直觀比較不同類別的數據大小",
     path: "/chart",
+    chartType: "bar",
   },
   {
     title: "圓餅圖",
     icon: "mdi-chart-pie",
     description: "展示數據佔比與分佈情況",
     path: "/chart",
+    chartType: "pie",
   },
   {
     title: "進階功能",
@@ -65,8 +68,12 @@ const features = [
   },
 ];
 
-const navigateToChart = (path: string) => {
-  router.push(path);
+const navigateToChart = (path: string, chartType?: string) => {
+  if (chartType) {
+    router.push({ path, query: { type: chartType } });
+  } else {
+    router.push(path);
+  }
 };
 </script>
 
@@ -96,7 +103,7 @@ const navigateToChart = (path: string) => {
           v-for="(chart, index) in chartTypes"
           :key="index"
           class="chart-card"
-          @click="navigateToChart(chart.path)"
+          @click="navigateToChart(chart.path, chart.chartType)"
         >
           <div class="chart-icon-wrapper">
             <i class="mdi chart-icon" :class="chart.icon"></i>
