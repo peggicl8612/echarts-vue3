@@ -13,7 +13,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   defaultData: () => ({
-    categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+    categories: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
     series: {
       A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
       B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
@@ -160,35 +160,86 @@ const triggerFileUpload = () => {
 
 // 清除上傳的檔案並重置為預設資料
 const clearUploadedFile = () => {
+  console.log("開始清除檔案..."); // 添加調試日誌
+
   uploadedFile.value = "";
   if (fileInput.value) {
     fileInput.value.value = "";
   }
 
+  // 確保使用深拷貝來避免引用問題
+  const defaultCategories = [...props.defaultData.categories];
+  const defaultSeries = JSON.parse(JSON.stringify(props.defaultData.series));
+  const defaultSeriesNames = Object.keys(defaultSeries);
+
+  console.log("發送預設數據:", {
+    defaultCategories,
+    defaultSeries,
+    defaultSeriesNames,
+  }); // 添加調試日誌
+
   // 發送預設資料給父組件
   emit("dataImported", {
-    categories: [...props.defaultData.categories],
-    series: JSON.parse(JSON.stringify(props.defaultData.series)),
-    seriesNames: Object.keys(props.defaultData.series),
+    categories: defaultCategories,
+    series: defaultSeries,
+    seriesNames: defaultSeriesNames,
   });
 
   ElMessage.success("已重置為預設資料");
 };
 
+// 載入測試數據
+const loadTestData = async () => {
+  try {
+    ElMessage.info("正在載入測試數據...");
+
+    const response = await fetch("/data/testData.json");
+    if (!response.ok) {
+      throw new Error("無法載入測試數據");
+    }
+
+    const testData = await response.json();
+
+    // 發送測試數據給父組件
+    emit("dataImported", {
+      categories: testData.categories,
+      series: testData.series,
+      seriesNames: testData.seriesNames,
+    });
+
+    ElMessage.success(
+      `已載入測試數據：${testData.categories.length} 個類別，${testData.seriesNames.length} 個系列`
+    );
+  } catch (error) {
+    console.error("載入測試數據失敗:", error);
+    ElMessage.error("載入測試數據失敗，請檢查檔案是否存在");
+  }
+};
+
 // 下載範例 Excel 檔案
 const downloadExampleExcel = () => {
-  // 從 props 建立範例資料
-  const seriesNames = Object.keys(props.defaultData.series);
+  // 使用硬編碼的範例資料（數字序列）
+  const exampleCategories = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+  const exampleSeries = {
+    A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
+    B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
+    C商品: [90, 160, 130, 190, 150, 210, 170, 200, 180, 220],
+    D商品: [100, 180, 140, 210, 170, 230, 190, 220, 200, 240],
+  };
+
+  const seriesNames = Object.keys(exampleSeries);
   const exampleData: any[][] = [];
 
   // 第一列：標題行
-  exampleData.push(["類別", ...seriesNames]);
+  exampleData.push(["系列", ...seriesNames]);
 
   // 後續列：各類別的數據
-  props.defaultData.categories.forEach((category, index) => {
-    const row = [category];
+  exampleCategories.forEach((category, index) => {
+    const row: any[] = [category];
     seriesNames.forEach((seriesName) => {
-      row.push(props.defaultData.series[seriesName][index] || 0);
+      row.push(
+        exampleSeries[seriesName as keyof typeof exampleSeries][index] || 0
+      );
     });
     exampleData.push(row);
   });
@@ -225,6 +276,14 @@ defineExpose({
         title="下載範例檔案"
       >
         範例
+      </button>
+
+      <button
+        class="load-test-data-btn"
+        @click="loadTestData"
+        title="載入一萬筆測試數據"
+      >
+        測試數據
       </button>
 
       <!-- 隱藏的檔案輸入 -->
@@ -290,7 +349,8 @@ defineExpose({
     flex-direction: row;
     gap: 12px;
 
-    .download-example-btn {
+    .download-example-btn,
+    .load-test-data-btn {
       padding: 10px 20px;
       background: #8b8686;
       color: white;
@@ -307,6 +367,15 @@ defineExpose({
 
       &:active {
         transform: translateY(0);
+      }
+    }
+
+    .load-test-data-btn {
+      background: #4a90e2;
+
+      &:hover {
+        background: #357abd;
+        box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
       }
     }
 
@@ -363,10 +432,17 @@ defineExpose({
         font-size: 12px;
         transition: all 0.2s ease;
         color: #e74c3c;
+        position: relative;
+        z-index: 10; // 確保按鈕在最上層
 
         &:hover {
           background: rgba(255, 0, 0, 0.2);
           border-color: rgba(255, 0, 0, 0.5);
+          transform: scale(1.05); // 添加視覺反饋
+        }
+
+        &:active {
+          transform: scale(0.95);
         }
       }
     }

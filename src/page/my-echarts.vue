@@ -37,6 +37,7 @@ interface SeriesData {
 // 預設資料（用於初始化和重置）
 const defaultChartData = {
   categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+
   series: {
     A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
     B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
@@ -52,15 +53,10 @@ const seriesData = reactive<SeriesData[]>([
   { name: "D商品", enabled: true, color: "#ee6666" },
 ]);
 
-// 圖表數據
+// 圖表數據 - 使用預設資料的深拷貝
 const chartData = reactive({
-  categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
-  series: {
-    A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
-    B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
-    C商品: [90, 160, 130, 190, 150, 210, 170, 200, 180, 220],
-    D商品: [100, 180, 140, 210, 170, 230, 190, 220, 200, 240],
-  },
+  categories: [...defaultChartData.categories],
+  series: JSON.parse(JSON.stringify(defaultChartData.series)),
 });
 
 // Excel 上傳組件的 ref
@@ -73,7 +69,7 @@ const handleDataImported = (data: {
   seriesNames: string[];
 }) => {
   // 更新圖表資料
-  chartData.categories = data.categories;
+  chartData.categories = [...data.categories];
 
   // 清空舊的系列資料
   Object.keys(chartData.series).forEach((key) => {
@@ -82,7 +78,7 @@ const handleDataImported = (data: {
 
   // 添加新的系列資料
   Object.entries(data.series).forEach(([key, values]) => {
-    (chartData.series as any)[key] = values;
+    (chartData.series as any)[key] = [...values];
   });
 
   // 更新系列配置（ex：顏色）
@@ -178,7 +174,7 @@ const renderChart = () => {
     backgroundColor: themeConfig.backgroundColor,
     // 網格配置 - 為工具箱留出空間
     grid: {
-      top: 100,
+      top: 130,
       right: 60,
       bottom: 80,
       left: 60,
@@ -188,11 +184,6 @@ const renderChart = () => {
     toolbox: {
       show: true,
       feature: {
-        saveAsImage: {
-          show: true,
-          title: "下載圖片",
-          pixelRatio: 2,
-        },
         dataView: {
           show: true,
           title: "資料檢視",
@@ -218,15 +209,27 @@ const renderChart = () => {
 
   // 添加資料縮放（適合大量數據）
   if (currentType.value === "line" || currentType.value === "bar") {
+    // 檢查是否為測試數據（數據量大於1000筆）
+    const isTestData = chartData.categories.length > 1000;
+
     option.dataZoom = [
       {
         type: "slider",
         show: true,
         xAxisIndex: [0],
         start: 0,
-        end: 100,
+        end: isTestData ? 2 : 100, // 測試數據預設只顯示2%，其他數據顯示100%
         bottom: 10,
         height: 20,
+        handleStyle: {
+          color: "#4a90e2",
+        },
+        textStyle: {
+          color: themeConfig.textColor,
+        },
+        borderColor: themeConfig.textColor,
+        fillerColor: "rgba(74, 144, 226, 0.2)",
+        backgroundColor: currentTheme.value === "dark" ? "#333" : "#f0f0f0",
       },
     ];
   }
@@ -262,18 +265,22 @@ const renderChart = () => {
       itemStyle: {
         color: series.color,
       },
-      // 標記點（僅顯示第一個系列的標記點，避免過於雜亂）
-      ...(series.name === enabledSeries[0]?.name && {
-        markPoint: {
-          data: [
-            { type: "max", name: "最大值" },
-            { type: "min", name: "最小值" },
-          ],
+      // 隱藏線圖上的小圓點標記點
+      symbol: "none",
+      // 只顯示最大值和最小值標記點
+      markPoint: {
+        data: [
+          { type: "max", name: "最大值" },
+          { type: "min", name: "最小值" },
+        ],
+        itemStyle: {
+          color: series.color,
         },
-        markLine: {
-          data: [{ type: "average", name: "平均值" }],
+        label: {
+          color: "#fff",
+          fontSize: 10,
         },
-      }),
+      },
     }));
   } else if (currentType.value === "pie") {
     // 動態計算每個系列的半徑範圍
@@ -465,6 +472,8 @@ onBeforeUnmount(() => {
           :current-type="currentType"
           :current-theme="currentTheme"
           :color-theme="colorTheme"
+          :chart-data="chartData"
+          :series-data="seriesData"
         />
       </div>
     </div>
