@@ -3,6 +3,7 @@ import { ElMessage } from "element-plus";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as echarts from "echarts";
+import "@/assets/fonts/NotoSansTC.js";
 
 interface Props {
   chartInstance?: any;
@@ -29,6 +30,7 @@ interface Props {
     enabled: boolean;
     color: string;
   }>;
+  currentReportType?: string;
 }
 
 const props = defineProps<Props>();
@@ -57,6 +59,10 @@ const convertSeriesNameToEnglish = (chineseName: string): string => {
     F商品: "Product F",
     G商品: "Product G",
     H商品: "Product H",
+    電子產品: "Electronic Products",
+    服飾: "Clothes",
+    食品: "Food",
+    運動: "Sports",
   };
 
   return nameMap[chineseName] || chineseName;
@@ -448,7 +454,7 @@ const addChartToPDF = (
   height: number,
   currentDisplayLength: number
 ) => {
-  // 添加標題 - 使用英文避免字符問題
+  // 添加標題 - 使用英文，使用默認字體
   pdf.setFontSize(20);
   pdf.setFont("helvetica", "bold");
   pdf.text(
@@ -457,29 +463,45 @@ const addChartToPDF = (
     20
   );
 
-  // 添加副標題 - 使用英文
+  // 添加副標題 - 使用英文，使用默認字體
   pdf.setFontSize(12);
-  pdf.setFont("helvetica", "normal");
+  pdf.setFont("helvetica", "bold");
   pdf.text(`Chart Type: ${props.currentType?.toUpperCase()}`, 10, 28);
 
-  // 添加數據統計資訊 - 使用英文
+  // 添加報表類型資訊 - 使用英文避免亂碼
+  const reportTypeEnglish =
+    props.currentReportType === "daily"
+      ? "Daily"
+      : props.currentReportType === "monthly"
+      ? "Monthly"
+      : props.currentReportType === "yearly"
+      ? "Yearly"
+      : "Daily";
+
+  pdf.setFontSize(10);
+  pdf.setFont("helvetica", "normal");
+  pdf.text(`Report Type: ${reportTypeEnglish}`, 10, 36);
+
+  // 添加數據統計資訊 - 使用英文，使用默認字體
   if (props.chartData && props.seriesData) {
     const enabledSeries = props.seriesData.filter((series) => series.enabled);
     const englishSeriesNames = enabledSeries.map((s) =>
       convertSeriesNameToEnglish(s.name)
     );
-    pdf.text(`Series: ${englishSeriesNames.join(", ")}`, 10, 40);
-    pdf.text(`Total Records: ${currentDisplayLength}`, 10, 46); // 顯示當前顯示的數據筆數
+    pdf.setFont("helvetica", "normal");
+    pdf.text(`Series: ${englishSeriesNames.join(", ")}`, 10, 44);
+    pdf.text(`Total Records: ${currentDisplayLength}`, 10, 50); // 顯示當前顯示的數據筆數
   }
 
   // 居中添加圖表
   const xOffset = (pdf.internal.pageSize.getWidth() - width) / 2;
-  const yOffset = 50; // 減少上邊距，為更大圖表留空間
+  const yOffset = 56; // 調整上邊距，為報表類型資訊留空間
 
   pdf.addImage(imageUrl, "PNG", xOffset, yOffset, width, height);
 
-  // 添加頁尾資訊 - 使用英文
+  // 添加頁尾資訊 - 使用英文，使用默認字體
   pdf.setFontSize(10);
+  pdf.setFont("helvetica", "normal");
   const now = new Date();
   const timeString = now.toLocaleString("en-US", {
     year: "numeric",
@@ -496,7 +518,7 @@ const addChartToPDF = (
     pdf.internal.pageSize.getHeight() - 10
   );
 
-  // 添加頁碼
+  // 添加頁碼 - 使用英文，使用默認字體
   pdf.text(
     `Page 1`,
     pdf.internal.pageSize.getWidth() - 20,
@@ -521,10 +543,7 @@ const addDataTableToPDF = (
   }
 
   // 準備表格數據 - 只使用當前顯示範圍的數據
-  const tableHeaders = [
-    "Series",
-    ...enabledSeries.map((series) => convertSeriesNameToEnglish(series.name)),
-  ];
+  const tableHeaders = ["系列", ...enabledSeries.map((series) => series.name)];
   const allData: string[][] = [];
 
   // 處理當前顯示範圍的數據
@@ -556,11 +575,8 @@ const addDataTableToPDF = (
 
     // 添加頁面標題 - 使用英文
     pdf.setFontSize(16);
-    pdf.setFont("helvetica", "bold");
-
-    // 添加頁面資訊 - 使用英文
-    pdf.setFontSize(10);
-    pdf.setFont("helvetica", "normal");
+    pdf.setFont("NotoSansTC", "bold");
+    pdf.text("數據表格", 20, 30);
 
     // 添加表格
     const currentPageNumber = pageIndex + 2; // 計算當前頁碼（圖表佔第1頁）
@@ -573,12 +589,14 @@ const addDataTableToPDF = (
         cellPadding: 2,
         overflow: "linebreak",
         halign: "center",
+        font: "NotoSansTC",
       },
       headStyles: {
         fillColor: "#8b8686",
-        textColor: 255,
         fontStyle: "bold",
+        textColor: 255,
         fontSize: 9,
+        font: "NotoSansTC",
       },
       alternateRowStyles: {
         fillColor: "#f8f9fa",

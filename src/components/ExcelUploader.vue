@@ -30,6 +30,7 @@ const emit = defineEmits<{
       categories: string[];
       series: Record<string, number[]>;
       seriesNames: string[];
+      fileName?: string;
     }
   ];
 }>();
@@ -146,6 +147,7 @@ const processExcelData = (data: any[][]) => {
     categories,
     series: seriesDataMap,
     seriesNames: Object.keys(seriesDataMap),
+    fileName: uploadedFile.value,
   });
 
   ElMessage.success(
@@ -208,7 +210,7 @@ const loadTestData = async () => {
     });
 
     ElMessage.success(
-      `已載入測試數據：${testData.categories.length} 個類別，${testData.seriesNames.length} 個系列`
+      `已載入近三年產品銷售額數據 ，共${testData.seriesNames.length} 個分類`
     );
   } catch (error) {
     console.error("載入測試數據失敗:", error);
@@ -218,19 +220,50 @@ const loadTestData = async () => {
 
 // 下載範例 Excel 檔案
 const downloadExampleExcel = () => {
-  // 使用硬編碼的範例資料（數字序列）
-  const exampleCategories = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
+  // 建立工作簿
+  const workbook = XLSX.utils.book_new();
+
+  // 建立說明頁面
+  const instructionData: any[][] = [
+    ["日期/系列", "產品A", "產品B", "產品C"],
+    ["2022/01/01", "120", "80", "90"],
+    ["2022/01/02", "200", "150", "160"],
+    ["2022/01/03", "150", "120", "130"],
+  ];
+  const instructionSheet = XLSX.utils.aoa_to_sheet(instructionData);
+
+  // 設定說明頁欄寬
+  instructionSheet["!cols"] = [
+    { wch: 50 }, // A欄：說明內容
+    { wch: 15 }, // B欄：範例產品A
+    { wch: 15 }, // C欄：範例產品B
+    { wch: 15 }, // D欄：範例產品C
+  ];
+  XLSX.utils.book_append_sheet(workbook, instructionSheet, "格式說明");
+
+  // 建立範例資料頁面（使用日期格式）
+  const exampleCategories = [
+    "2022/01/01",
+    "2022/01/02",
+    "2022/01/03",
+    "2022/01/04",
+    "2022/01/05",
+    "2022/01/06",
+    "2022/01/07",
+    "2022/01/08",
+    "2022/01/09",
+    "2022/01/10",
+  ];
   const exampleSeries = {
-    A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
-    B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
-    C商品: [90, 160, 130, 190, 150, 210, 170, 200, 180, 220],
-    D商品: [100, 180, 140, 210, 170, 230, 190, 220, 200, 240],
+    產品A: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
+    產品B: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
+    產品C: [90, 160, 130, 190, 150, 210, 170, 200, 180, 220],
   };
 
   const seriesNames = Object.keys(exampleSeries);
   const exampleData: any[][] = [];
 
-  // 第一列：標題行
+  // 第一列：標題行（A1必須是「系列」）
   exampleData.push(["系列", ...seriesNames]);
 
   // 後續列：各類別的數據
@@ -247,14 +280,20 @@ const downloadExampleExcel = () => {
   // 建立工作表
   const worksheet = XLSX.utils.aoa_to_sheet(exampleData);
 
-  // 建立工作簿
-  const workbook = XLSX.utils.book_new();
+  // 設定範例頁欄寬
+  worksheet["!cols"] = [
+    { wch: 12 }, // A欄：日期
+    { wch: 10 }, // B欄開始：數值
+    { wch: 10 },
+    { wch: 10 },
+  ];
+
   XLSX.utils.book_append_sheet(workbook, worksheet, "範例資料");
 
   // 下載檔案
-  XLSX.writeFile(workbook, "圖表資料範例.xlsx");
+  XLSX.writeFile(workbook, "範例數據.xlsx");
 
-  ElMessage.success("範例檔案已下載");
+  ElMessage.success("範例檔案已下載，請查看「格式說明」工作表");
 };
 
 // 暴露清除方法給父組件使用
@@ -270,22 +309,23 @@ defineExpose({
       <div class="upload-hint">支援 .xlsx .xls .csv 格式</div>
     </div>
     <div class="file-upload-section">
-      <button
-        class="download-example-btn"
-        @click="downloadExampleExcel"
-        title="下載範例檔案"
-      >
-        範例
-      </button>
+      <div class="example-test-section">
+        <button
+          class="download-example-btn"
+          @click="downloadExampleExcel"
+          title="下載範例檔案"
+        >
+          範例
+        </button>
 
-      <button
-        class="load-test-data-btn"
-        @click="loadTestData"
-        title="載入一萬筆測試數據"
-      >
-        測試數據
-      </button>
-
+        <button
+          class="load-test-data-btn"
+          @click="loadTestData"
+          title="載入一萬筆測試數據"
+        >
+          測試
+        </button>
+      </div>
       <!-- 隱藏的檔案輸入 -->
       <input
         type="file"
@@ -344,46 +384,52 @@ defineExpose({
 
   .file-upload-section {
     display: flex;
-    align-items: center;
     width: 100%;
-    flex-direction: row;
-    gap: 12px;
+    flex-direction: column;
 
-    .download-example-btn,
-    .load-test-data-btn {
-      padding: 10px 20px;
-      background: #8b8686;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      font-size: 14px;
+    .example-test-section {
+      display: flex;
+      flex-direction: row;
+      gap: 12px;
+      margin-bottom: 12px;
+      .download-example-btn,
+      .load-test-data-btn {
+        flex: 1;
+        padding: 10px 20px;
+        background: #8b8686;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        font-size: 14px;
 
-      &:hover {
-        transform: translateY(-2px);
-      }
+        &:hover {
+          transform: translateY(-2px);
+        }
 
-      &:active {
-        transform: translateY(0);
+        &:active {
+          transform: translateY(0);
+        }
       }
     }
 
     .load-test-data-btn {
-      background: #4a90e2;
+      background: #8b8686;
 
       &:hover {
-        background: #357abd;
-        box-shadow: 0 6px 20px rgba(74, 144, 226, 0.4);
+        background: #7a7575;
+        box-shadow: 0 6px 20px rgba(139, 134, 134, 0.4);
       }
     }
 
     .upload-container {
-      width: auto;
+      width: 100%;
     }
 
     .upload-btn {
+      width: 100%;
       padding: 10px 20px;
       background: #8b8686;
       color: white;

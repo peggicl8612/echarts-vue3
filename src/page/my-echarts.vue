@@ -11,12 +11,13 @@ import {
 } from "vue";
 import ExcelUploader from "../components/ExcelUploader.vue";
 import ExportFormat from "@/components/ExportFormat.vue";
+import ToggleReportType from "@/components/ToggleReportType.vue";
 
 const chartRef = ref(null);
 const chartInstance = ref<any>(null);
 
 // 圖表類型
-const chartTypes = ["line", "bar", "pie"];
+const chartTypes = ["line", "bar"];
 const currentType = ref(chartTypes["0"]);
 
 // 主題列表
@@ -27,6 +28,21 @@ const themes = [
 
 const currentTheme = ref("light");
 
+// 報表類型
+const currentReportType = ref("daily");
+const aggregatedChartData = ref(null);
+
+// 處理報表類型變更
+const handleReportTypeChanged = (data: {
+  reportType: string;
+  aggregatedData: any;
+}) => {
+  console.log("報表類型變更:", data);
+  currentReportType.value = data.reportType;
+  aggregatedChartData.value = data.aggregatedData;
+  console.log("更新後的聚合數據:", aggregatedChartData.value);
+};
+
 // 多系列數據配置
 interface SeriesData {
   name: string;
@@ -34,30 +50,150 @@ interface SeriesData {
   color: string;
 }
 
-// 預設資料（用於初始化和重置）
-const defaultChartData = {
-  categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],
+// 生成三年時間序列日期（2022-01-01 到 2024-12-31）
+const generateThreeYearDateCategories = () => {
+  const categories: string[] = [];
+  const startDate = new Date("2022-01-01");
+  const endDate = new Date("2024-12-31");
 
-  series: {
-    A商品: [120, 200, 150, 220, 180, 200, 190, 230, 210, 240],
-    B商品: [80, 150, 120, 180, 140, 200, 160, 190, 170, 210],
-    C商品: [90, 160, 130, 190, 150, 210, 170, 200, 180, 220],
-    D商品: [100, 180, 140, 210, 170, 230, 190, 220, 200, 240],
-  },
+  const currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    const year = currentDate.getFullYear();
+    const month = String(currentDate.getMonth() + 1).padStart(2, "0");
+    const day = String(currentDate.getDate()).padStart(2, "0");
+    categories.push(`${year}-${month}-${day}`);
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  return categories;
 };
 
-const seriesData = reactive<SeriesData[]>([
-  { name: "A商品", enabled: true, color: "#5470c6" },
-  { name: "B商品", enabled: true, color: "#91cc75" },
-  { name: "C商品", enabled: true, color: "#fac858" },
-  { name: "D商品", enabled: true, color: "#ee6666" },
-]);
+// 生成模擬銷售數據（帶有年度趨勢、季節性和波動）
+const generateSalesData = (
+  baseSales: number,
+  dailyIndex: number,
+  variance: number = 20
+) => {
+  // 年度趨勢（三年內緩慢增長）
+  const yearProgress = dailyIndex / (365 * 3); // 0 到 1
+  const yearlyTrend = yearProgress * 30; // 三年增長約30單位
+
+  // 季節性波動（使用正弦波模擬）
+  const seasonalFactor = Math.sin((dailyIndex / 365) * 2 * Math.PI) * 15;
+
+  // 週期性波動（每週末略低）
+  const dayOfWeek = dailyIndex % 7;
+  const weeklyFactor = dayOfWeek >= 5 ? -5 : 0; // 週末略降
+
+  // 隨機波動
+  const randomVariance = (Math.random() - 0.5) * variance;
+
+  const value = Math.max(
+    0,
+    Math.round(
+      baseSales + yearlyTrend + seasonalFactor + weeklyFactor + randomVariance
+    )
+  );
+  return value;
+};
+
+// 生成模擬銷售額數據（基於價格和銷量）
+const generateRevenueData = (price: number, salesData: number[]) => {
+  return salesData.map((sales) => Math.round(sales * price));
+};
+
+// Mars eSIM 產品預設資料（用於初始化和重置）
+// 每個銷售方案作為系列，時間軸作為分類
+// 只保留日本相關方案
+const productPrices: Record<string, number> = {
+  日本5G吃到飽: 299,
+  日本4G計日型: 149,
+};
+
+// 基礎銷量設定（每個產品的平均日銷量）- 只保留日本方案
+const baseSales: Record<string, number> = {
+  日本5G吃到飽: 85,
+  日本4G計日型: 62,
+};
+
+const dateCategories = generateThreeYearDateCategories();
+const totalDays = dateCategories.length; // 1095 天（三年）
+
+// 生成每個產品的銷量和銷售額數據
+const generateSeriesData = () => {
+  const series: Record<string, any[]> = {};
+  Object.keys(productPrices).forEach((productName) => {
+    const baseSale = baseSales[productName];
+    const price = productPrices[productName];
+    if (baseSale === undefined || price === undefined) return;
+
+    // 為每一天生成銷售數據
+    const fullSalesData: number[] = [];
+    for (let i = 0; i < totalDays; i++) {
+      const sales = generateSalesData(baseSale, i, 20);
+      fullSalesData.push(sales);
+    }
+
+    const revenueData = generateRevenueData(price, fullSalesData);
+
+    // 合併銷量和銷售額為單一系列，每個數據點包含兩個值
+    series[productName] = fullSalesData.map((sales, index) => ({
+      value: sales, // 主要顯示值（銷量）
+      sales: sales, // 銷量
+      revenue: revenueData[index], // 銷售額
+      price: price, // 價格
+    }));
+  });
+  return series;
+};
+
+const defaultChartData = {
+  categories: dateCategories,
+  series: generateSeriesData(),
+};
+
+// 初始化系列數據 - 每個產品為單一系列（包含銷量和銷售額）
+const initialSeriesData: SeriesData[] = [];
+Object.keys(productPrices).forEach((productName, index) => {
+  const colors = ["#5470c6", "#91cc75"]; // 只使用兩個顏色對應兩個日本方案
+  const colorIdx = index % colors.length;
+  const color = colors[colorIdx] || "#5470c6";
+  // 每個產品為單一系列
+  initialSeriesData.push({
+    name: productName,
+    enabled: true,
+    color: color,
+  });
+});
+
+const seriesData = reactive<SeriesData[]>(initialSeriesData);
+
+// 標記是否為測試數據
+const isTestDataMode = ref(false);
+
+// 匯入的檔案名稱
+const importedFileName = ref("");
 
 // 圖表數據 - 使用預設資料的深拷貝
 const chartData = reactive({
   categories: [...defaultChartData.categories],
   series: JSON.parse(JSON.stringify(defaultChartData.series)),
 });
+
+// 計算當前使用的圖表數據
+const currentChartData = computed(() => {
+  return aggregatedChartData.value || chartData;
+});
+
+// 監聽圖表數據變化，重新渲染圖表
+watch(
+  currentChartData,
+  () => {
+    if (chartInstance.value) {
+      renderChart();
+    }
+  },
+  { deep: true }
+);
 
 // Excel 上傳組件的 ref
 const excelUploaderRef = ref<InstanceType<typeof ExcelUploader> | null>(null);
@@ -67,7 +203,23 @@ const handleDataImported = (data: {
   categories: string[];
   series: Record<string, number[]>;
   seriesNames: string[];
+  fileName?: string;
 }) => {
+  // 判斷是否為測試數據（檢查系列名稱或數據量）
+  const testDataSeriesNames = ["電子產品", "服飾", "食品", "運動"];
+  const hasTestSeries = data.seriesNames.some((name) =>
+    testDataSeriesNames.includes(name)
+  );
+  const hasLargeDataset = data.categories.length > 10000;
+  isTestDataMode.value = hasTestSeries || hasLargeDataset;
+
+  // 記錄匯入的檔案名稱
+  if (data.fileName) {
+    importedFileName.value = data.fileName.replace(/\.[^/.]+$/, ""); // 移除副檔名
+  } else {
+    importedFileName.value = "";
+  }
+
   // 更新圖表資料
   chartData.categories = [...data.categories];
 
@@ -111,15 +263,15 @@ const handleDataImported = (data: {
   renderChart();
 };
 
-// 顏色主題配置
+// 顏色主題配置 - 針對 Mars eSIM 電商產品優化
 const colorTheme = {
   light: {
-    colors: ["#5470c6", "#91cc75", "#fac858", "#ee6666"],
+    colors: ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272"],
     backgroundColor: "#ffffff",
     textColor: "#000000",
   },
   dark: {
-    colors: ["#5470c6", "#91cc75", "#fac858", "#ee6666"],
+    colors: ["#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", "#3ba272"],
     backgroundColor: "#2d3748",
     textColor: "#ffffff",
   },
@@ -143,27 +295,153 @@ const renderChart = () => {
 
   const option: echarts.EChartsOption = {
     title: {
-      text: `${currentType.value?.toUpperCase()} 多系列數據分析`,
+      text: importedFileName.value
+        ? `${importedFileName.value} - ${currentType.value?.toUpperCase()} 圖表`
+        : isTestDataMode.value
+        ? `各產品近三年銷售率 - ${currentType.value?.toUpperCase()} 圖表`
+        : `Mars eSIM 產品分析 - ${currentType.value?.toUpperCase()} 圖表`,
       left: "center",
-      textStyle: { color: themeConfig.textColor },
+      textStyle: {
+        color: themeConfig.textColor,
+        fontSize: 18,
+        fontWeight: "bold",
+      },
     },
     tooltip: {
-      trigger: currentType.value === "pie" ? "item" : "axis",
-      ...(currentType.value !== "pie" && {
-        axisPointer: {
-          type: "cross",
-          crossStyle: {
-            color: "#999",
-          },
+      trigger: currentType.value === "bar" ? "item" : "axis",
+      className: "custom-tooltip",
+      formatter: (params: any) => {
+        if (Array.isArray(params)) {
+          const date = params[0].axisValue;
+          // 格式化日期顯示（包含年份）
+          const dateObj = new Date(date);
+          const formattedDate = `${dateObj.getFullYear()}/${String(
+            dateObj.getMonth() + 1
+          ).padStart(2, "0")}/${String(dateObj.getDate()).padStart(2, "0")}`;
+          let tooltip = `<div class="tooltip-date">${formattedDate}</div>`;
+          params.forEach((param: any) => {
+            // 從原始數據中獲取完整對象（使用dataIndex）
+            const seriesName = param.seriesName;
+            const dataIndex = param.dataIndex;
+
+            // 獲取當前顯示的值（優先從param.data獲取，然後param.value）
+            let currentValue = param.value;
+            if (param.data !== undefined) {
+              if (
+                typeof param.data === "object" &&
+                param.data.value !== undefined
+              ) {
+                currentValue = param.data.value;
+              } else if (typeof param.data === "number") {
+                currentValue = param.data;
+              }
+            }
+
+            // 嘗試從原始數據獲取完整對象
+            let dataItem: any = null;
+            const seriesData =
+              currentChartData.value.series[
+                seriesName as keyof typeof currentChartData.value.series
+              ];
+
+            if (
+              seriesData &&
+              Array.isArray(seriesData) &&
+              dataIndex < seriesData.length
+            ) {
+              const rawItem = seriesData[dataIndex];
+              // 如果原始數據是對象且包含sales和revenue
+              if (
+                rawItem &&
+                typeof rawItem === "object" &&
+                rawItem.sales !== undefined &&
+                rawItem.revenue !== undefined
+              ) {
+                dataItem = rawItem;
+              }
+            }
+
+            // 如果沒有獲取到完整對象，使用當前值構建
+            if (!dataItem && currentValue !== undefined) {
+              // 從productPrices獲取價格
+              const price = productPrices[seriesName] || 0;
+
+              if (price > 0) {
+                // 構建數據對象
+                dataItem = {
+                  value: currentValue,
+                  sales: currentValue, // 圖表顯示的是銷量
+                  revenue: Math.round(currentValue * price),
+                  price: price,
+                };
+              }
+            }
+
+            if (
+              dataItem &&
+              typeof dataItem === "object" &&
+              dataItem.sales !== undefined &&
+              dataItem.revenue !== undefined
+            ) {
+              // 新的合併數據格式
+              tooltip += `<div class="tooltip-item">
+                    <div class="tooltip-header">
+                      <span class="tooltip-color" style="background: ${
+                        param.color
+                      }"></span>
+                      <span class="tooltip-series-name">${seriesName}</span>
+                    </div>
+                    <div class="tooltip-content">
+                      <div class="tooltip-data">銷量: <span class="tooltip-value">${
+                        dataItem.sales
+                      } </span></div>
+                      <div class="tooltip-data">銷售額: <span class="tooltip-value">NT$ ${dataItem.revenue.toLocaleString()}</span></div>
+                    </div>
+                  </div>`;
+            } else {
+              // 舊格式（向後兼容）
+              const value = param.value;
+              let formattedValue = value;
+              if (
+                param.seriesName.includes("銷售額") ||
+                param.seriesName.includes("NT$")
+              ) {
+                formattedValue = `NT$ ${value.toLocaleString()}`;
+              } else if (param.seriesName.includes("銷量")) {
+                formattedValue = `${value}  `;
+              }
+              tooltip += `<div class="tooltip-item">
+                    <div class="tooltip-header">
+                      <span class="tooltip-color" style="background: ${param.color}"></span>
+                      <span class="tooltip-series-name">${param.seriesName}:</span>
+                      <span class="tooltip-value">${formattedValue}</span>
+                    </div>
+                  </div>`;
+            }
+          });
+          return tooltip;
+        }
+        return "";
+      },
+      axisPointer: {
+        type: "cross",
+        crossStyle: {
+          color: "#999",
         },
-      }),
+      },
     },
     legend: {
       data: enabledSeries.map((series) => series.name),
       top: 50,
+      type: "scroll",
+      orient: "horizontal",
       textStyle: {
         color: themeConfig.textColor,
+        fontSize: 11,
       },
+      itemWidth: 14,
+      itemHeight: 14,
+      itemGap: 10,
       // 圖例互動配置
       selected: enabledSeries.reduce((acc, series) => {
         acc[series.name] = series.enabled;
@@ -172,11 +450,10 @@ const renderChart = () => {
     },
     color: themeConfig.colors,
     backgroundColor: themeConfig.backgroundColor,
-    // 網格配置 - 為工具箱留出空間
     grid: {
-      top: 130,
+      top: 150,
       right: 60,
-      bottom: 80,
+      bottom: 60,
       left: 60,
       containLabel: true,
     },
@@ -193,135 +470,113 @@ const renderChart = () => {
           show: true,
           title: "還原",
         },
-        ...(currentType.value !== "pie" && {
-          dataZoom: {
-            show: true,
-            title: {
-              zoom: "區域縮放",
-              back: "還原縮放",
-            },
-            xAxisIndex: 0,
+        dataZoom: {
+          show: true,
+          title: {
+            zoom: "區域縮放",
+            back: "還原縮放",
           },
-        }),
+          xAxisIndex: 0,
+        },
       },
     },
   };
 
-  // 添加資料縮放（適合大量數據）
-  if (currentType.value === "line" || currentType.value === "bar") {
-    // 檢查是否為測試數據（數據量大於1000筆）
-    const isTestData = chartData.categories.length > 1000;
-
-    option.dataZoom = [
-      {
-        type: "slider",
-        show: true,
-        xAxisIndex: [0],
-        start: 0,
-        end: isTestData ? 2 : 100, // 測試數據預設只顯示2%，其他數據顯示100%
-        bottom: 10,
-        height: 20,
-        handleStyle: {
-          color: "#4a90e2",
-        },
-        textStyle: {
-          color: themeConfig.textColor,
-        },
-        borderColor: themeConfig.textColor,
-        fillerColor: "rgba(74, 144, 226, 0.2)",
-        backgroundColor: currentTheme.value === "dark" ? "#333" : "#f0f0f0",
+  option.xAxis = {
+    type: "category",
+    data: currentChartData.value.categories,
+    axisLine: {
+      lineStyle: {
+        color: themeConfig.textColor,
       },
-    ];
-  }
-
-  if (currentType.value === "line" || currentType.value === "bar") {
-    option.xAxis = {
-      type: "category",
-      data: chartData.categories,
-      axisLine: {
-        lineStyle: {
-          color: themeConfig.textColor,
-        },
+    },
+    axisLabel: {
+      rotate: -45,
+      interval: Math.floor(currentChartData.value.categories.length / 10), // 自動調整顯示間隔
+      fontSize: 11,
+      color: themeConfig.textColor,
+      margin: 15,
+      formatter: (value: string) => {
+        // 格式化日期顯示為 YYYY/MM/DD（包含年份）
+        const date = new Date(value);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}/${month}/${day}`;
       },
-    };
-    option.yAxis = {
-      type: "value",
-      axisLine: {
-        lineStyle: {
-          color: themeConfig.textColor,
-        },
+    },
+  };
+  option.yAxis = {
+    type: "value",
+    axisLine: {
+      lineStyle: {
+        color: themeConfig.textColor,
       },
-      splitLine: {
-        lineStyle: {
-          color: currentTheme.value === "dark" ? "333" : "eee",
-        },
+    },
+    axisLabel: {
+      formatter: (value: number) => {
+        // 根據啟用的系列判斷格式化
+        if (
+          enabledSeries.some(
+            (s) => s.name.includes("銷售額") || s.name.includes("NT$")
+          )
+        ) {
+          // 如果有銷售額系列，Y軸顯示金額格式
+          if (enabledSeries.every((s) => s.name.includes("銷售額"))) {
+            return `NT$ ${(value / 10000).toFixed(1)}萬`;
+          }
+          // 如果同時有銷量和銷售額，使用數值格式
+          return value.toLocaleString();
+        }
+        return value.toString();
       },
-    };
-    option.series = enabledSeries.map((series) => ({
-      name: series.name,
-      type: currentType.value as "line" | "bar",
-      data: chartData.series[series.name as keyof typeof chartData.series],
-      smooth: currentType.value === "line",
+      color: themeConfig.textColor,
+    },
+    splitLine: {
+      lineStyle: {
+        color: currentTheme.value === "dark" ? "#333" : "#eee",
+      },
+    },
+  };
+  option.series = enabledSeries.map((series) => ({
+    name: series.name,
+    type: currentType.value as "line" | "bar",
+    data:
+      currentChartData.value.series[
+        series.name as keyof typeof currentChartData.value.series
+      ]?.map((item: any) => {
+        // 如果是新的合併數據格式，保留完整對象，但使用value作為圖表顯示值
+        if (item && typeof item === "object" && item.value !== undefined) {
+          // ECharts支持這樣的格式：返回數值用於繪圖，完整對象存儲在數據中
+          return {
+            value: item.value,
+            sales: item.sales,
+            revenue: item.revenue,
+          };
+        }
+        return item;
+      }) || [],
+    smooth: currentType.value === "line",
+    itemStyle: {
+      color: series.color,
+    },
+    // 隱藏線圖上的小圓點標記點
+    symbol: "none",
+    // 只顯示最大值和最小值標記點
+    markPoint: {
+      data: [
+        { type: "max", name: "最大值" },
+        { type: "min", name: "最小值" },
+      ],
       itemStyle: {
         color: series.color,
       },
-      // 隱藏線圖上的小圓點標記點
-      symbol: "none",
-      // 只顯示最大值和最小值標記點
-      markPoint: {
-        data: [
-          { type: "max", name: "最大值" },
-          { type: "min", name: "最小值" },
-        ],
-        itemStyle: {
-          color: series.color,
-        },
-        label: {
-          color: "#fff",
-          fontSize: 10,
-        },
+      label: {
+        color: "#fff",
+        fontSize: 10,
       },
-    }));
-  } else if (currentType.value === "pie") {
-    // 動態計算每個系列的半徑範圍
-    const totalSeries = enabledSeries.length;
-    const maxRadius = 60; // 最大半徑百分比
-    const minRadius = 0; // 最小半徑百分比
-    const gap = 1.5; // 每個圓環之間的間隙
-    const availableSpace = maxRadius - minRadius;
-    const ringWidth = (availableSpace - gap * (totalSeries - 1)) / totalSeries;
-
-    option.series = enabledSeries.map((series, index) => {
-      const innerRadius = minRadius + index * (ringWidth + gap);
-      const outerRadius = innerRadius + ringWidth;
-
-      return {
-        name: series.name,
-        type: "pie",
-        radius: [`${innerRadius}%`, `${outerRadius}%`],
-        center: ["50%", "55%"],
-        data: chartData.categories.map((category, idx) => ({
-          name: category,
-          value:
-            chartData.series[series.name as keyof typeof chartData.series][idx],
-        })),
-        itemStyle: {
-          color: series.color,
-        },
-        label: {
-          show: index === enabledSeries.length - 1,
-          color: themeConfig.textColor,
-        },
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: "rgba(0, 0, 0, 0.5)",
-          },
-        },
-      };
-    });
-  }
+    },
+  }));
   // 使用 notMerge: true 來完全替換配置，而不是合併
   chartInstance.value?.setOption(option, { notMerge: true });
 };
@@ -465,6 +720,15 @@ onBeforeUnmount(() => {
         />
       </div>
 
+      <!-- 報表類型切換區 -->
+      <div class="control-section">
+        <ToggleReportType
+          v-model="currentReportType"
+          :chart-data="chartData"
+          @report-type-changed="handleReportTypeChanged"
+        />
+      </div>
+
       <!-- 導出功能區 -->
       <div class="control-section">
         <ExportFormat
@@ -472,8 +736,9 @@ onBeforeUnmount(() => {
           :current-type="currentType"
           :current-theme="currentTheme"
           :color-theme="colorTheme"
-          :chart-data="chartData"
+          :chart-data="currentChartData"
           :series-data="seriesData"
+          :current-report-type="currentReportType"
         />
       </div>
     </div>
@@ -730,5 +995,67 @@ onBeforeUnmount(() => {
       letter-spacing: 0.5px;
     }
   }
+}
+
+/* 自定義 tooltip 樣式 */
+:deep(.custom-tooltip) {
+  background-color: #ffffff !important;
+  border: 1px solid #ccc !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  padding: 12px 16px !important;
+}
+
+:deep(.custom-tooltip .tooltip-date) {
+  margin-bottom: 10px;
+  font-weight: bold;
+  font-size: 14px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+:deep(.custom-tooltip .tooltip-item) {
+  margin: 8px 0;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+:deep(.custom-tooltip .tooltip-header) {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+:deep(.custom-tooltip .tooltip-color) {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  margin-right: 8px;
+}
+
+:deep(.custom-tooltip .tooltip-series-name) {
+  font-weight: 600;
+  color: #333;
+  font-size: 13px;
+  margin-right: 8px;
+}
+
+:deep(.custom-tooltip .tooltip-content) {
+  margin-left: 20px;
+  line-height: 1.8;
+}
+
+:deep(.custom-tooltip .tooltip-data) {
+  color: #666;
+  font-size: 12px;
+}
+
+:deep(.custom-tooltip .tooltip-value) {
+  font-weight: bold;
+  color: #333;
+  font-size: 13px;
 }
 </style>
