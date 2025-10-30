@@ -3,5 +3,7 @@ var font = 'AAEAAAAXAQAABABwQkFTRazfn30AAASYAAABCkdERUZNd/bqAAAD5AAAALRHUE9TltH3
 var callAddFont = function () {
 this.addFileToVFS('NotoSansTC-bold.ttf', font);
 this.addFont('NotoSansTC-bold.ttf', 'NotoSansTC', 'bold');
+// 同時註冊正常字體（使用相同的字體檔案）
+this.addFont('NotoSansTC-bold.ttf', 'NotoSansTC', 'normal');
 };
 jsPDF.API.events.push(['addFonts', callAddFont])

@@ -174,12 +174,6 @@ const clearUploadedFile = () => {
   const defaultSeries = JSON.parse(JSON.stringify(props.defaultData.series));
   const defaultSeriesNames = Object.keys(defaultSeries);
 
-  console.log("發送預設數據:", {
-    defaultCategories,
-    defaultSeries,
-    defaultSeriesNames,
-  }); // 添加調試日誌
-
   // 發送預設資料給父組件
   emit("dataImported", {
     categories: defaultCategories,
@@ -195,6 +189,13 @@ const loadTestData = async () => {
   try {
     ElMessage.info("正在載入測試數據...");
 
+    // 重置上傳檔案 UI 狀態
+    uploadedFile.value = "";
+    if (fileInput.value) {
+      fileInput.value.value = "";
+    }
+
+    // 載入測試資料
     const response = await fetch("/data/testData.json");
     if (!response.ok) {
       throw new Error("無法載入測試數據");
@@ -223,24 +224,6 @@ const downloadExampleExcel = () => {
   // 建立工作簿
   const workbook = XLSX.utils.book_new();
 
-  // 建立說明頁面
-  const instructionData: any[][] = [
-    ["日期/系列", "產品A", "產品B", "產品C"],
-    ["2022/01/01", "120", "80", "90"],
-    ["2022/01/02", "200", "150", "160"],
-    ["2022/01/03", "150", "120", "130"],
-  ];
-  const instructionSheet = XLSX.utils.aoa_to_sheet(instructionData);
-
-  // 設定說明頁欄寬
-  instructionSheet["!cols"] = [
-    { wch: 50 }, // A欄：說明內容
-    { wch: 15 }, // B欄：範例產品A
-    { wch: 15 }, // C欄：範例產品B
-    { wch: 15 }, // D欄：範例產品C
-  ];
-  XLSX.utils.book_append_sheet(workbook, instructionSheet, "格式說明");
-
   // 建立範例資料頁面（使用日期格式）
   const exampleCategories = [
     "2022/01/01",
@@ -263,10 +246,8 @@ const downloadExampleExcel = () => {
   const seriesNames = Object.keys(exampleSeries);
   const exampleData: any[][] = [];
 
-  // 第一列：標題行（A1必須是「系列」）
   exampleData.push(["系列", ...seriesNames]);
 
-  // 後續列：各類別的數據
   exampleCategories.forEach((category, index) => {
     const row: any[] = [category];
     seriesNames.forEach((seriesName) => {
@@ -280,20 +261,12 @@ const downloadExampleExcel = () => {
   // 建立工作表
   const worksheet = XLSX.utils.aoa_to_sheet(exampleData);
 
-  // 設定範例頁欄寬
-  worksheet["!cols"] = [
-    { wch: 12 }, // A欄：日期
-    { wch: 10 }, // B欄開始：數值
-    { wch: 10 },
-    { wch: 10 },
-  ];
-
   XLSX.utils.book_append_sheet(workbook, worksheet, "範例資料");
 
   // 下載檔案
   XLSX.writeFile(workbook, "範例數據.xlsx");
 
-  ElMessage.success("範例檔案已下載，請查看「格式說明」工作表");
+  ElMessage.success("範例檔案已下載");
 };
 
 // 暴露清除方法給父組件使用

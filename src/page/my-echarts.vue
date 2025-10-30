@@ -259,6 +259,10 @@ const handleDataImported = (data: {
   colorTheme.light.colors = newColors;
   colorTheme.dark.colors = newColors;
 
+  // 清空聚合後的數據
+  aggregatedChartData.value = null;
+  // 重置報表類型為日報表
+  currentReportType.value = "daily";
   // 重新渲染圖表
   renderChart();
 };
@@ -283,6 +287,7 @@ const initChart = () => {
     chartInstance.value.dispose();
   }
   chartInstance.value = echarts.init(chartRef.value, currentTheme.value);
+
   renderChart();
 };
 
@@ -584,6 +589,7 @@ const renderChart = () => {
 // 點擊事件
 const handleClick = (type: string) => {
   currentType.value = type;
+  
   initChart();
   ElMessage.success(`已切換為${type}圖表`);
 };

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch, nextTick } from "vue";
 import { ElMessage } from "element-plus";
 interface Props {
   chartData?: {
@@ -45,6 +45,71 @@ const currentReportType = ref(props.modelValue);
 const dailyRange = ref({ start: 0, end: 1095 }); // 日報表範圍
 const monthlyRange = ref({ start: 0, end: 36 }); // 月報表範圍
 
+// 強制重建滑軌
+const rangeKey = ref(0);
+
+// 外部 v-model 改變（父層切回 daily 等）
+watch(
+  () => props.modelValue,
+  async (val) => {
+    if (!val || !props.chartData?.categories?.length) return;
+
+    currentReportType.value = val;
+
+    if (val === "daily") {
+      dailyRange.value = {
+        start: 0,
+        end: props.chartData.categories.length - 1,
+      };
+    } else if (val === "monthly") {
+      const monthCount = new Set(
+        props.chartData.categories.map((d) => {
+          const dt = new Date(d);
+          return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+            2,
+            "0"
+          )}`;
+        })
+      ).size;
+      monthlyRange.value = { start: 0, end: monthCount - 1 };
+    }
+
+    rangeKey.value++; // 強制重建滑軌
+    await nextTick(); // 等 DOM 更新再送資料
+    const aggregated = aggregateData(props.chartData, val);
+    emit("reportTypeChanged", { reportType: val, aggregatedData: aggregated });
+  }
+);
+
+// 資料源改變（上傳/清除/測試）
+watch(
+  () => props.chartData?.categories,
+  async (cats) => {
+    if (!cats?.length) return;
+
+    dailyRange.value = { start: 0, end: cats.length - 1 };
+
+    const monthCount = new Set(
+      cats.map((d) => {
+        const dt = new Date(d);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}`;
+      })
+    ).size;
+    monthlyRange.value = { start: 0, end: monthCount - 1 };
+
+    rangeKey.value++;
+    await nextTick();
+    const aggregated = aggregateData(props.chartData, currentReportType.value);
+    emit("reportTypeChanged", {
+      reportType: currentReportType.value,
+      aggregatedData: aggregated,
+    });
+  }
+);
+
 // 數據聚合函數
 const aggregateData = (data: any, reportType: string) => {
   if (!data || !data.categories || !data.series) return data;
@@ -64,43 +129,25 @@ const aggregateData = (data: any, reportType: string) => {
   }
 };
 
-// 日報表聚合 - 支援滑軌調整範圍
+// 日報聚合：end + 1 作為 slice 的結束索引
 const aggregateDataDaily = (
   categories: string[],
-  series: Record<
-    string,
-    (number | { value: number; sales: number; revenue: number; price: any })[]
-  >
+  series: Record<string, any[]>
 ) => {
-  const dailyData: {
-    categories: string[];
-    series: Record<
-      string,
-      (number | { value: number; sales: number; revenue: number; price: any })[]
-    >;
-  } = {
-    categories: [],
-    series: {},
+  const dailyData = {
+    categories: [] as string[],
+    series: {} as Record<string, any[]>,
   };
+  const names = Object.keys(series);
+  names.forEach((n) => (dailyData.series[n] = []));
 
-  const seriesNames = Object.keys(series);
-  seriesNames.forEach((name) => {
-    dailyData.series[name] = [];
-  });
-
-  // 使用滑軌範圍
   const startIndex = dailyRange.value.start;
-  const endIndex = Math.min(dailyRange.value.end, categories.length);
-
+  const endIndex = Math.min(dailyRange.value.end + 1, categories.length); // 重要：end+1
   dailyData.categories = categories.slice(startIndex, endIndex);
-
-  seriesNames.forEach((name) => {
-    const seriesData = series[name];
-    if (seriesData) {
-      dailyData.series[name] = seriesData.slice(startIndex, endIndex);
-    }
+  names.forEach((n) => {
+    const s = series[n];
+    if (s) dailyData.series[n] = s.slice(startIndex, endIndex);
   });
-
   return dailyData;
 };
 
@@ -317,7 +364,16 @@ const aggregateDataYearly = (
 
 // 滑軌控制函數
 const updateDailyRange = (start: number, end: number) => {
-  dailyRange.value = { start, end };
+  const catsLen = props.chartData?.categories?.length || 0;
+  // 正規化：限制在有效索引、並確保 start <= end
+  let s = Math.max(0, Math.min(start, Math.max(0, catsLen - 1)));
+  let e = Math.max(0, Math.min(end, Math.max(0, catsLen - 1)));
+  if (s > e) {
+    const tmp = s;
+    s = e;
+    e = tmp;
+  }
+  dailyRange.value = { start: s, end: e };
   if (currentReportType.value === "daily" && props.chartData) {
     const aggregatedData = aggregateData(props.chartData, "daily");
     emit("reportTypeChanged", {
@@ -328,7 +384,29 @@ const updateDailyRange = (start: number, end: number) => {
 };
 
 const updateMonthlyRange = (start: number, end: number) => {
-  monthlyRange.value = { start, end };
+  const total = (() => {
+    const cats = props.chartData?.categories || [];
+    const set = new Set(
+      cats.map((d) => {
+        const dt = new Date(d);
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+          2,
+          "0"
+        )}`;
+      })
+    );
+    return set.size;
+  })();
+
+  // 正規化：限制在 0..total-1，並確保 start <= end
+  let s = Math.max(0, Math.min(start, Math.max(0, total - 1)));
+  let e = Math.max(0, Math.min(end, Math.max(0, total - 1)));
+  if (s > e) {
+    const tmp = s;
+    s = e;
+    e = tmp;
+  }
+  monthlyRange.value = { start: s, end: e };
   if (currentReportType.value === "monthly" && props.chartData) {
     const aggregatedData = aggregateData(props.chartData, "monthly");
     emit("reportTypeChanged", {
@@ -358,6 +436,53 @@ const switchReportType = (reportType: string) => {
     aggregatedData: aggregatedData,
   });
 };
+
+// 工具：取得月份總數
+const getMonthCount = () => {
+  const cats = props.chartData?.categories || [];
+  const set = new Set(
+    cats.map((d) => {
+      const dt = new Date(d);
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}`;
+    })
+  );
+  return set.size;
+};
+
+// 同步父層 v-model
+watch(
+  () => props.modelValue,
+  (val) => {
+    // 如果沒有值，則不進行任何操作
+    if (!val) return;
+    currentReportType.value = val;
+
+    // 重置對應時間滑軌
+    if (val === "daily" && props.chartData?.categories?.length) {
+      dailyRange.value = { start: 0, end: props.chartData.categories.length };
+    } else if (val === "monthly" && props.chartData?.categories?.length) {
+      const monthCount = new Set(
+        props.chartData.categories.map((dailyRange) => {
+          const date = new Date(dailyRange);
+          return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+            2,
+            "0"
+          )}`;
+        })
+      ).size;
+      monthlyRange.value = { start: 0, end: monthCount };
+    }
+
+    // 依最新報表型態回傳聚合資料，讓父層立刻渲染正確畫面
+    if (props.chartData) {
+      const aggregatedData = aggregateData(props.chartData, val);
+      emit("reportTypeChanged", { reportType: val, aggregatedData });
+    }
+  }
+);
 </script>
 
 <template>
@@ -379,46 +504,89 @@ const switchReportType = (reportType: string) => {
     </div>
 
     <!-- 滑軌控制 -->
-    <div v-if="currentReportType === 'daily'" class="range-control">
+    <div
+      v-if="currentReportType === 'daily'"
+      class="range-control"
+      :key="`daily-${rangeKey}`"
+    >
       <div class="range-label">日報表範圍</div>
-      <div class="range-slider">
+      <div class="dual-slider">
+        <!-- 左把手（開始） -->
         <input
           type="range"
+          class="range start"
           :min="0"
-          :max="props.chartData?.categories.length || 1000"
+          :max="(props.chartData?.categories.length || 0) - 1"
           v-model="dailyRange.start"
           @input="updateDailyRange(dailyRange.start, dailyRange.end)"
-          class="slider"
         />
+        <!-- 右把手（結束） -->
         <input
           type="range"
-          :min="dailyRange.start + 1"
-          :max="props.chartData?.categories.length || 1000"
+          class="range end"
+          :min="0"
+          :max="(props.chartData?.categories.length || 0) - 1"
           v-model="dailyRange.end"
           @input="updateDailyRange(dailyRange.start, dailyRange.end)"
-          class="slider"
+        />
+        <!-- 已選區間的著色條 -->
+        <div
+          class="range-fill"
+          :style="{
+            left:
+              (Math.min(dailyRange.start, dailyRange.end) /
+                ((props.chartData?.categories.length || 1) - 1)) *
+                100 +
+              '%',
+            right:
+              (1 -
+                Math.max(dailyRange.start, dailyRange.end) /
+                  ((props.chartData?.categories.length || 1) - 1)) *
+                100 +
+              '%',
+          }"
         />
       </div>
     </div>
 
-    <div v-if="currentReportType === 'monthly'" class="range-control">
+    <div
+      v-if="currentReportType === 'monthly'"
+      class="range-control"
+      :key="`monthly-${rangeKey}`"
+    >
       <div class="range-label">月報表範圍</div>
-      <div class="range-slider">
+      <div class="dual-slider">
         <input
           type="range"
+          class="range start"
           :min="0"
-          :max="36"
+          :max="(getMonthCount() || 1) - 1"
           v-model="monthlyRange.start"
           @input="updateMonthlyRange(monthlyRange.start, monthlyRange.end)"
-          class="slider"
         />
         <input
           type="range"
-          :min="monthlyRange.start + 1"
-          :max="36"
+          class="range end"
+          :min="0"
+          :max="(getMonthCount() || 1) - 1"
           v-model="monthlyRange.end"
           @input="updateMonthlyRange(monthlyRange.start, monthlyRange.end)"
-          class="slider"
+        />
+        <div
+          class="range-fill"
+          :style="{
+            left:
+              (Math.min(monthlyRange.start, monthlyRange.end) /
+                ((getMonthCount() || 1) - 1)) *
+                100 +
+              '%',
+            right:
+              (1 -
+                Math.max(monthlyRange.start, monthlyRange.end) /
+                  ((getMonthCount() || 1) - 1)) *
+                100 +
+              '%',
+          }"
         />
       </div>
     </div>
@@ -441,6 +609,7 @@ const switchReportType = (reportType: string) => {
   }
 
   .report-btn {
+    flex: 1;
     background: #8b8686;
     color: white;
     border: 1px solid #ddd;
@@ -449,7 +618,6 @@ const switchReportType = (reportType: string) => {
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 12px;
-    min-width: 60px;
     text-align: center;
 
     &:hover {
@@ -474,8 +642,7 @@ const switchReportType = (reportType: string) => {
     background: #f8f9fa;
     border-radius: 6px;
     border: 1px solid #e9ecef;
-    width: 100%;
-    max-width: 175px;
+    flex: 1;
 
     .range-label {
       font-size: 12px;
@@ -484,30 +651,64 @@ const switchReportType = (reportType: string) => {
       margin-bottom: 8px;
     }
 
-    .range-slider {
+    /* 單行雙把手滑軌 */
+    .dual-slider {
+      position: relative;
+      height: 28px; /* 容器高度 */
       display: flex;
-      flex-direction: column;
-      gap: 8px;
+      align-items: center;
       margin-bottom: 8px;
+    }
 
-      .slider {
-        height: 6px;
-        border-radius: 3px;
-        background: #ddd;
-        outline: none;
-        -webkit-appearance: none;
-        appearance: none;
+    .dual-slider .range {
+      position: absolute;
+      left: -9px; /* 讓把手可超出左右半個把手寬，視覺貼齊邊緣 */
+      top: 50%;
+      transform: translateY(-50%);
+      width: calc(100% + 18px);
+      appearance: none;
+      background: transparent;
+      pointer-events: none; /* 軌道不吃事件，只有把手可拖 */
+      height: 0; /* 由 track 高度決定視覺高度 */
+      margin: 0;
+    }
 
-        &::-webkit-slider-thumb {
-          -webkit-appearance: none;
-          appearance: none;
-          width: 16px;
-          height: 16px;
-          border-radius: 50%;
-          background: #000;
-          cursor: pointer;
-        }
-      }
+    .dual-slider .range::-webkit-slider-thumb {
+      pointer-events: auto;
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #535151;
+      cursor: pointer;
+    }
+    .dual-slider .range::-moz-range-thumb {
+      pointer-events: auto;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #535151;
+      cursor: pointer;
+    }
+
+    .dual-slider .start {
+      z-index: 1;
+    }
+    .dual-slider .end {
+      z-index: 1;
+    }
+
+    .dual-slider .range-fill {
+      position: absolute;
+      height: 10px;
+      border-radius: 6px;
+      background: #8b8686;
+      pointer-events: none;
+      top: 50%;
+      transform: translateY(-50%);
     }
 
     .range-info {

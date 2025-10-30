@@ -48,26 +48,6 @@ const exportFormats = [
   { type: "pdf", label: "PDF" },
 ];
 
-// 將中文系列名稱轉換為英文
-const convertSeriesNameToEnglish = (chineseName: string): string => {
-  const nameMap: Record<string, string> = {
-    A商品: "Product A",
-    B商品: "Product B",
-    C商品: "Product C",
-    D商品: "Product D",
-    E商品: "Product E",
-    F商品: "Product F",
-    G商品: "Product G",
-    H商品: "Product H",
-    電子產品: "Electronic Products",
-    服飾: "Clothes",
-    食品: "Food",
-    運動: "Sports",
-  };
-
-  return nameMap[chineseName] || chineseName;
-};
-
 // 導出圖表
 const exportChart = (format: string) => {
   if (!props.chartInstance) {
@@ -456,7 +436,8 @@ const addChartToPDF = (
 ) => {
   // 添加標題 - 使用英文，使用默認字體
   pdf.setFontSize(20);
-  pdf.setFont("helvetica", "bold");
+  pdf.setFont("NotoSansTC");
+  pdf.setFont("bold");
   pdf.text(
     `${props.currentType?.toUpperCase()} Multi-Series Data Analysis`,
     10,
@@ -465,7 +446,8 @@ const addChartToPDF = (
 
   // 添加副標題 - 使用英文，使用默認字體
   pdf.setFontSize(12);
-  pdf.setFont("helvetica", "bold");
+  pdf.setFont("NotoSansTC");
+  pdf.setFont("bold");
   pdf.text(`Chart Type: ${props.currentType?.toUpperCase()}`, 10, 28);
 
   // 添加報表類型資訊 - 使用英文避免亂碼
@@ -479,18 +461,21 @@ const addChartToPDF = (
       : "Daily";
 
   pdf.setFontSize(10);
-  pdf.setFont("helvetica", "normal");
+  pdf.setFont("NotoSansTC");
+  pdf.setFont("bold");
   pdf.text(`Report Type: ${reportTypeEnglish}`, 10, 36);
 
   // 添加數據統計資訊 - 使用英文，使用默認字體
   if (props.chartData && props.seriesData) {
     const enabledSeries = props.seriesData.filter((series) => series.enabled);
-    const englishSeriesNames = enabledSeries.map((s) =>
-      convertSeriesNameToEnglish(s.name)
+
+    pdf.setFont("NotoSansTC");
+    pdf.text(
+      `Series: ${enabledSeries.map((series) => series.name).join(", ")}`,
+      9,
+      44
     );
-    pdf.setFont("helvetica", "normal");
-    pdf.text(`Series: ${englishSeriesNames.join(", ")}`, 10, 44);
-    pdf.text(`Total Records: ${currentDisplayLength}`, 10, 50); // 顯示當前顯示的數據筆數
+    pdf.text(`Total Records: ${currentDisplayLength}`, 9, 50); // 顯示當前顯示的數據筆數
   }
 
   // 居中添加圖表
@@ -501,7 +486,8 @@ const addChartToPDF = (
 
   // 添加頁尾資訊 - 使用英文，使用默認字體
   pdf.setFontSize(10);
-  pdf.setFont("helvetica", "normal");
+  pdf.setFont("NotoSansTC");
+  pdf.setFont("bold");
   const now = new Date();
   const timeString = now.toLocaleString("en-US", {
     year: "numeric",
@@ -550,7 +536,18 @@ const addDataTableToPDF = (
   for (let i = startIndex; i < endIndex; i++) {
     const row = [props.chartData.categories[i]];
     enabledSeries.forEach((series) => {
-      const value = props.chartData!.series[series.name]?.[i] || 0;
+      const rawValue = props.chartData!.series[series.name]?.[i] || 0;
+      // 修復 [Object, Object] 問題：確保值是數字
+      let value: number;
+      if (typeof rawValue === "object" && rawValue !== null) {
+        // 如果是對象，嘗試提取 value 屬性或 sales 屬性
+        const objValue = rawValue as any;
+        value = objValue.value || objValue.sales || 0;
+      } else if (typeof rawValue === "number") {
+        value = rawValue;
+      } else {
+        value = Number(rawValue) || 0;
+      }
       row.push(value.toString());
     });
     allData.push(row as string[]);
@@ -575,7 +572,7 @@ const addDataTableToPDF = (
 
     // 添加頁面標題 - 使用英文
     pdf.setFontSize(16);
-    pdf.setFont("NotoSansTC", "bold");
+    pdf.setFont("NotoSansTC", "normal");
     pdf.text("數據表格", 20, 30);
 
     // 添加表格
@@ -589,13 +586,14 @@ const addDataTableToPDF = (
         cellPadding: 2,
         overflow: "linebreak",
         halign: "center",
-        font: "NotoSansTC",
+        font: "helvetica",
+        textColor: [0, 0, 0],
       },
       headStyles: {
         fillColor: "#8b8686",
         fontStyle: "bold",
-        textColor: 255,
-        fontSize: 9,
+        textColor: [255, 255, 255],
+        fontSize: 12,
         font: "NotoSansTC",
       },
       alternateRowStyles: {
