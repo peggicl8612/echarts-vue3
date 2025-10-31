@@ -6,6 +6,12 @@ const router = useRouter();
 // 圖表類型展示
 const chartTypes = [
   {
+    title: "多功能圖表",
+    icon: "mdi-lightning-bolt",
+    description: "支援多種圖表類型，並提供多種功能特色",
+    path: "/chart2",
+  },
+  {
     title: "折線圖",
     icon: "mdi-chart-line",
     description: "展示數據趨勢變化，支援平滑曲線、區域填充等效果",
@@ -27,10 +33,11 @@ const chartTypes = [
     chartType: "pie",
   },
   {
-    title: "進階功能",
-    icon: "mdi-lightning-bolt",
-    description: "資料縮放、標記點、標記線等互動功能",
-    path: "/chart2",
+    title: "視覺化",
+    icon: "mdi-chart-scatter-plot",
+    description: "使用地圖視覺化數據，並提供互動功能",
+    path: "/geo",
+    chartType: "geo",
   },
 ];
 
@@ -66,7 +73,54 @@ const features = [
     title: "資料縮放",
     desc: "支援滑桿與內建縮放，輕鬆探索大量資料",
   },
+  // 新增特色（近期完成）
+  {
+    icon: "mdi-view-dashboard",
+    title: "全螢幕導覽卡片",
+    desc: "首頁 100vw/100vh 卡片，hover 模糊、點擊導向 /chart2",
+  },
+  {
+    icon: "mdi-table",
+    title: "資料檢視表格優化",
+    desc: "Toolbox DataView 自訂表格，sticky 日期欄與不換行",
+  },
+  {
+    icon: "mdi-arrow-right-circle",
+    title: "引導箭頭動效",
+    desc: "hover 顯示箭頭 icon，提示可前往進階範例",
+  },
+  {
+    icon: "mdi-theme-light-dark",
+    title: "深淺色主題",
+    desc: "即時切換主題並套用於圖表與 UI",
+  },
 ];
+
+// 幻燈片（仿 Quasar）狀態
+import {
+  ref as vueRef,
+  onMounted as vueOnMounted,
+  onBeforeUnmount as vueOnBeforeUnmount,
+} from "vue";
+const slideIndex = vueRef(0);
+const autoTimer = vueRef<number | null>(null);
+const totalSlides = features.length;
+const goTo = (idx: number) => {
+  const n = ((idx % totalSlides) + totalSlides) % totalSlides;
+  slideIndex.value = n;
+};
+const next = () => goTo(slideIndex.value + 1);
+const prev = () => goTo(slideIndex.value - 1);
+vueOnMounted(() => {
+  autoTimer.value = window.setInterval(() => {
+    next();
+  }, 3500);
+});
+vueOnBeforeUnmount(() => {
+  if (autoTimer.value) {
+    clearInterval(autoTimer.value);
+  }
+});
 
 const navigateToChart = (path: string, chartType?: string) => {
   if (chartType) {
@@ -86,7 +140,7 @@ const navigateToChart = (path: string, chartType?: string) => {
 
         <div class="hero-buttons">
           <button class="btn-primary" @click="navigateToChart('/chart')">
-            查看圖表展示
+            圖表展示
           </button>
           <button class="btn-secondary" @click="navigateToChart('/chart2')">
             進階範例
@@ -102,7 +156,7 @@ const navigateToChart = (path: string, chartType?: string) => {
         <div
           v-for="(chart, index) in chartTypes"
           :key="index"
-          class="chart-card"
+          :class="['chart-card', { 'span-full': index === 0 }]"
           @click="navigateToChart(chart.path, chart.chartType)"
         >
           <div class="chart-icon-wrapper">
@@ -114,40 +168,48 @@ const navigateToChart = (path: string, chartType?: string) => {
       </div>
     </section>
 
-    <!-- 功能特色 -->
+    <!-- 功能特色（仿 Quasar 幻燈片） -->
     <section class="features-section">
       <h2 class="section-title">功能特色</h2>
-      <div class="features-grid">
-        <div
-          v-for="(feature, index) in features"
-          :key="index"
-          class="feature-card"
-        >
-          <div class="feature-icon">
-            <i class="mdi" :class="feature.icon"></i>
+      <div class="q-carousel">
+        <button class="q-control prev" @click="prev" aria-label="prev">
+          <i class="mdi mdi-chevron-left"></i>
+        </button>
+        <div class="q-window">
+          <div
+            class="q-track"
+            :style="{
+              transform: `translateX(calc(-${slideIndex * 100}% + 10%))`,
+            }"
+          >
+            <div v-for="(feature, idx) in features" :key="idx" class="q-slide">
+              <div class="feature-card">
+                <div class="feature-icon">
+                  <i class="mdi" :class="feature.icon"></i>
+                </div>
+                <h3 class="feature-title">{{ feature.title }}</h3>
+                <p class="feature-desc">{{ feature.desc }}</p>
+              </div>
+            </div>
           </div>
-          <h3 class="feature-title">{{ feature.title }}</h3>
-          <p class="feature-desc">{{ feature.desc }}</p>
         </div>
+        <button class="q-control next" @click="next" aria-label="next">
+          <i class="mdi mdi-chevron-right"></i>
+        </button>
+      </div>
+      <div class="q-dots">
+        <span
+          v-for="(_, i) in features"
+          :key="i"
+          :class="['q-dot', { active: i === slideIndex }]"
+          @click="goTo(i)"
+        ></span>
       </div>
     </section>
 
     <!-- 學習成果統計 -->
     <section class="stats-section">
-      <div class="stats-container">
-        <div class="stat-item">
-          <div class="stat-number">3+</div>
-          <div class="stat-label">圖表類型</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-number">10+</div>
-          <div class="stat-label">功能特色</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-number">100%</div>
-          <div class="stat-label">響應式設計</div>
-        </div>
-      </div>
+      <div class="stats-container"></div>
     </section>
   </div>
 </template>
@@ -158,6 +220,63 @@ const navigateToChart = (path: string, chartType?: string) => {
 .home-outer {
   min-height: calc(100vh - 60px);
   background: linear-gradient(135deg, #ebeae5 0%, #a9a38b 100%);
+}
+
+/* Fullscreen Multi-function Chart Card */
+.full-card-section {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.full-card {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.full-card-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      60% 60% at 50% 40%,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0.25) 45%,
+      rgba(0, 0, 0, 0.15) 100%
+    ),
+    linear-gradient(120deg, #ebeae5 0%, #c7c1a2 50%, #a9a38b 100%);
+  transform: scale(1.02);
+  transition: filter 0.35s ease, transform 0.35s ease;
+}
+
+.full-card-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #2d3748;
+  text-align: center;
+  z-index: 1;
+}
+
+.full-card-title {
+  font-size: clamp(2rem, 6vw, 5rem);
+  font-weight: 800;
+  letter-spacing: 2px;
+}
+
+.full-card-sub {
+  font-size: clamp(1rem, 2vw, 1.25rem);
+  opacity: 0.85;
+}
+
+.full-card-section:hover .full-card-bg {
+  filter: blur(6px) brightness(0.95);
+  transform: scale(1.04);
 }
 
 .hero-section {
@@ -266,17 +385,14 @@ const navigateToChart = (path: string, chartType?: string) => {
   text-align: center;
   font-size: 2.5rem;
   font-weight: 700;
-  margin-bottom: 60px;
   color: #2d3748;
 
   @include md-width {
     font-size: 2rem;
-    margin-bottom: 40px;
   }
 
   @include sm-width {
     font-size: 1.75rem;
-    margin-bottom: 30px;
   }
 }
 
@@ -313,6 +429,10 @@ const navigateToChart = (path: string, chartType?: string) => {
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
   position: relative;
   overflow: hidden;
+
+  &.span-full {
+    grid-column: 1 / -1; /* 多功能圖表佔一整行 */
+  }
 
   &:hover {
     transform: translateY(-8px);
@@ -376,39 +496,84 @@ const navigateToChart = (path: string, chartType?: string) => {
 }
 
 /* Features Section */
-.features-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 32px;
-  max-width: 1200px;
+/* Quasar-like Carousel */
+.q-carousel {
+  position: relative;
+  max-width: 1000px;
   margin: 0 auto;
-
-  @include md-width {
-    gap: 24px;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  }
-
-  @include sm-width {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
 }
-
+.q-window {
+  overflow: visible;
+  border-radius: 12px;
+  padding: 0 10%;
+}
+.q-track {
+  display: flex;
+  width: 100%;
+  transition: transform 0.45s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.q-slide {
+  flex: 0 0 100%;
+  padding: 12px;
+}
 .feature-card {
   padding: 32px 24px;
   text-align: center;
   background: #f7fafc;
   border-radius: 12px;
   transition: all 0.3s ease;
-
-  &:hover {
-    background: #edf2f7;
-    transform: scale(1.03);
-  }
-
-  @include sm-width {
-    padding: 24px 20px;
-  }
+}
+.feature-card:hover {
+  background: #edf2f7;
+  transform: scale(1.02);
+}
+.q-control {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  border: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.q-control:hover {
+  transform: translateY(-50%) scale(1.05);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+.q-control i {
+  font-size: 22px;
+}
+.q-control.prev {
+  left: 6px;
+}
+.q-control.next {
+  right: 6px;
+}
+.q-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.q-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e0;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+.q-dot.active {
+  background: #718096;
+  transform: scale(1.2);
 }
 
 .feature-icon {
@@ -470,35 +635,6 @@ const navigateToChart = (path: string, chartType?: string) => {
   @include sm-width {
     grid-template-columns: 1fr;
     gap: 24px;
-  }
-}
-
-.stat-item {
-  text-align: center;
-}
-
-.stat-number {
-  font-size: 3.5rem;
-  font-weight: 800;
-  margin-bottom: 12px;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-
-  @include md-width {
-    font-size: 3rem;
-  }
-
-  @include sm-width {
-    font-size: 2.5rem;
-  }
-}
-
-.stat-label {
-  font-size: 1.25rem;
-  opacity: 0.95;
-  font-weight: 500;
-
-  @include sm-width {
-    font-size: 1.1rem;
   }
 }
 </style>

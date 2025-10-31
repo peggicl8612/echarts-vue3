@@ -339,10 +339,10 @@ const exportAsPDF = (filename: string) => {
       dataZoom: undefined, // 完全移除 dataZoom
       grid: {
         ...currentOption.grid,
-        bottom: 80, // 增加底部邊距，為標記點留更多空間
-        top: 130, // 增加頂部邊距
-        left: 80, // 增加左邊距
-        right: 80, // 增加右邊距
+        bottom: 80,
+        top: 130,
+        left: 80,
+        right: 80,
       },
       // 根據當前顯示範圍調整 xAxis 數據
       xAxis: {
@@ -401,7 +401,11 @@ const exportAsPDF = (filename: string) => {
 
         // 如果有數據且系列數據存在，添加數據表格頁面
         if (props.chartData && props.seriesData) {
-          addDataTableToPDF(pdf, startIndex, endIndex);
+          // 固定輸出 10,000 筆資料（若不足則以全量為準）
+          const total = props.chartData.categories.length;
+          const tableStartIndex = 0;
+          const tableEndIndex = Math.min(10000, total);
+          addDataTableToPDF(pdf, tableStartIndex, tableEndIndex);
         }
 
         pdf.save(`${filename}.pdf`);

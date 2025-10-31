@@ -298,6 +298,7 @@ const renderChart = () => {
   // 獲取啟用的系列
   const enabledSeries = seriesData.filter((series) => series.enabled);
 
+  // 圖表標題位置調整
   const option: echarts.EChartsOption = {
     title: {
       text: importedFileName.value
@@ -306,6 +307,7 @@ const renderChart = () => {
         ? `各產品近三年銷售率 - ${currentType.value?.toUpperCase()} 圖表`
         : `Mars eSIM 產品分析 - ${currentType.value?.toUpperCase()} 圖表`,
       left: "center",
+      top: 10,
       textStyle: {
         color: themeConfig.textColor,
         fontSize: 18,
@@ -589,7 +591,7 @@ const renderChart = () => {
 // 點擊事件
 const handleClick = (type: string) => {
   currentType.value = type;
-  
+
   initChart();
   ElMessage.success(`已切換為${type}圖表`);
 };

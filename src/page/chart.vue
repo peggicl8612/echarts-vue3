@@ -14,12 +14,12 @@ const chartTypes = ["line", "bar", "pie"];
 const currentType = ref(chartTypes["0"]);
 
 // 主題列表
-const themes = [
+/* const themes = [
   { name: "light", label: "淺色主題", color: "#ebeae5" },
   { name: "dark", label: "深色主題", color: "#2d3748" },
-];
+]; */
 
-const currentTheme = ref("light");
+//const currentTheme = ref("light");
 
 // 多系列數據配置
 
@@ -40,7 +40,11 @@ const initChart = () => {
 // 根據 currentType 渲染圖表
 const renderChart = () => {
   const option: echarts.EChartsOption = {
-    title: { text: `${currentType.value} Chart`, left: "center" },
+    title: {
+      text: `${currentType.value} Chart`,
+      left: "center",
+      top: currentType.value === "pie" ? 40 : 20,
+    },
     tooltip: {
       trigger: currentType.value === "pie" ? "item" : "axis",
       ...(currentType.value !== "pie" && {
@@ -139,6 +143,7 @@ const renderChart = () => {
       {
         name: "分佈",
         type: "pie",
+
         radius: "60%",
         data: chartData.categories.map((category, index) => ({
           name: category,
