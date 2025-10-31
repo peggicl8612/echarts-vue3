@@ -13,16 +13,6 @@ let chartInstance: echarts.ECharts | null = null;
 const chartTypes = ["line", "bar", "pie"];
 const currentType = ref(chartTypes["0"]);
 
-// 主題列表
-/* const themes = [
-  { name: "light", label: "淺色主題", color: "#ebeae5" },
-  { name: "dark", label: "深色主題", color: "#2d3748" },
-]; */
-
-//const currentTheme = ref("light");
-
-// 多系列數據配置
-
 // 圖表數據
 const chartData = reactive({
   categories: ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"],

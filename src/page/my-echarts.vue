@@ -14,7 +14,7 @@ import ExportFormat from "@/components/ExportFormat.vue";
 import ToggleReportType from "@/components/ToggleReportType.vue";
 
 const chartRef = ref(null);
-const chartInstance = ref<any>(null);
+let chartInstance: echarts.ECharts | null = null;
 
 // 圖表類型
 const chartTypes = ["line", "bar"];
@@ -37,10 +37,8 @@ const handleReportTypeChanged = (data: {
   reportType: string;
   aggregatedData: any;
 }) => {
-  console.log("報表類型變更:", data);
   currentReportType.value = data.reportType;
   aggregatedChartData.value = data.aggregatedData;
-  console.log("更新後的聚合數據:", aggregatedChartData.value);
 };
 
 // 多系列數據配置
@@ -188,7 +186,7 @@ const currentChartData = computed(() => {
 watch(
   currentChartData,
   () => {
-    if (chartInstance.value) {
+    if (chartInstance) {
       renderChart();
     }
   },
@@ -283,10 +281,15 @@ const colorTheme = {
 
 // 初始化
 const initChart = () => {
-  if (chartInstance.value) {
-    chartInstance.value.dispose();
+  const el = document.getElementById("chartRef");
+  if (el) {
+    // 移除畫布節點
+    el.remove();
   }
-  chartInstance.value = echarts.init(chartRef.value, currentTheme.value);
+  if (chartInstance) {
+    chartInstance.dispose();
+  }
+  chartInstance = echarts.init(chartRef.value, currentTheme.value);
 
   renderChart();
 };
@@ -525,11 +528,12 @@ const renderChart = () => {
         // 根據啟用的系列判斷格式化
         if (
           enabledSeries.some(
-            (s) => s.name.includes("銷售額") || s.name.includes("NT$")
+            (series) =>
+              series.name.includes("銷售額") || series.name.includes("NT$")
           )
         ) {
           // 如果有銷售額系列，Y軸顯示金額格式
-          if (enabledSeries.every((s) => s.name.includes("銷售額"))) {
+          if (enabledSeries.every((series) => series.name.includes("銷售額"))) {
             return `NT$ ${(value / 10000).toFixed(1)}萬`;
           }
           // 如果同時有銷量和銷售額，使用數值格式
@@ -554,7 +558,7 @@ const renderChart = () => {
       ]?.map((item: any) => {
         // 如果是新的合併數據格式，保留完整對象，但使用value作為圖表顯示值
         if (item && typeof item === "object" && item.value !== undefined) {
-          // ECharts支持這樣的格式：返回數值用於繪圖，完整對象存儲在數據中
+          // 返回數值用於繪圖，完整對象存儲在數據中
           return {
             value: item.value,
             sales: item.sales,
@@ -585,7 +589,7 @@ const renderChart = () => {
     },
   }));
   // 使用 notMerge: true 來完全替換配置，而不是合併
-  chartInstance.value?.setOption(option, { notMerge: true });
+  chartInstance?.setOption(option, { notMerge: true });
 };
 
 // 點擊事件
@@ -628,7 +632,7 @@ watch(currentType, () => {
 
 // 窗口 resize 時重新調整圖表大小
 const handleResize = () => {
-  chartInstance.value?.resize();
+  chartInstance?.resize();
 };
 
 // 初始化
@@ -640,7 +644,7 @@ onMounted(() => {
 // 銷毀圖例
 onBeforeUnmount(() => {
   window.removeEventListener("resize", handleResize);
-  chartInstance.value?.dispose();
+  chartInstance?.dispose();
 });
 </script>
 

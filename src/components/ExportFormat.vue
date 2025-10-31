@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { ref } from "vue";
 import { ElMessage } from "element-plus";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -35,6 +36,9 @@ interface Props {
 
 const props = defineProps<Props>();
 
+// 匯出狀態鎖定
+const isExporting = ref(false);
+
 // 定義 emit 事件
 const emit = defineEmits<{
   exportFormat: [data: { format: string; filename: string }];
@@ -52,6 +56,12 @@ const exportFormats = [
 const exportChart = (format: string) => {
   if (!props.chartInstance) {
     ElMessage.error("圖表未初始化");
+    return;
+  }
+
+  // 檢查是否正在匯出
+  if (isExporting.value) {
+    ElMessage.warning("正在匯出中，請稍後再試");
     return;
   }
 
@@ -77,6 +87,7 @@ const exportChart = (format: string) => {
   } catch (error) {
     console.error("導出失敗:", error);
     ElMessage.error("導出失敗，請重試");
+    isExporting.value = false;
   }
 };
 
@@ -87,7 +98,10 @@ const exportAsImage = (type: "png" | "jpeg", filename: string) => {
     return;
   }
 
+  if (isExporting.value) return;
+
   try {
+    isExporting.value = true;
     // 獲取當前 dataZoom 的狀態來確定顯示範圍
     const dataZoomState = props.chartInstance
       .getModel()
@@ -153,7 +167,7 @@ const exportAsImage = (type: "png" | "jpeg", filename: string) => {
     setTimeout(() => {
       const url = tempChart.getDataURL({
         type: type,
-        pixelRatio: 3, // 提高清晰度
+        pixelRatio: 1.5,
         backgroundColor:
           props.colorTheme?.[
             props.currentTheme as keyof typeof props.colorTheme
@@ -174,6 +188,7 @@ const exportAsImage = (type: "png" | "jpeg", filename: string) => {
   } catch (error) {
     console.log("導出圖片失敗:", error);
     ElMessage.error("導出圖片失敗，請重試");
+    isExporting.value = false;
   }
 };
 
@@ -184,7 +199,10 @@ const exportAsSVG = (filename: string) => {
     return;
   }
 
+  if (isExporting.value) return;
+
   try {
+    isExporting.value = true;
     // 獲取當前 dataZoom 的狀態來確定顯示範圍
     const dataZoomState = props.chartInstance
       .getModel()
@@ -252,7 +270,7 @@ const exportAsSVG = (filename: string) => {
     setTimeout(() => {
       const canvasUrl = tempChart.getDataURL({
         type: "png",
-        pixelRatio: 3, // 提高清晰度
+        pixelRatio: 1.5, // 提高清晰度
         backgroundColor:
           props.colorTheme?.[
             props.currentTheme as keyof typeof props.colorTheme
@@ -284,17 +302,19 @@ const exportAsSVG = (filename: string) => {
   } catch (error) {
     console.error("SVG 導出失敗:", error);
     ElMessage.error("SVG 導出失敗，請重試");
+    isExporting.value = false;
   }
 };
 
-// 導出為 PDF
-const exportAsPDF = (filename: string) => {
+// 優化後的 exportAsPDF 函數 - 批次匯出 + 圖片壓縮 + 延遲釋放
+const exportAsPDF = async (filename: string) => {
   if (!props.chartInstance) {
     ElMessage.error("圖表未初始化");
     return;
   }
 
   try {
+    isExporting.value = true;
     ElMessage.info("正在生成 PDF，請稍候...");
 
     // 獲取當前 dataZoom 的狀態來確定顯示範圍
@@ -317,116 +337,80 @@ const exportAsPDF = (filename: string) => {
     const endIndex = Math.floor((currentDataRange.end / 100) * totalLength);
     const currentDisplayLength = endIndex - startIndex;
 
-    // 創建臨時容器來生成乾淨的圖表（增加尺寸避免元素遮擋）
-    const tempContainer = document.createElement("div");
-    tempContainer.style.position = "absolute";
-    tempContainer.style.top = "-9999px";
-    tempContainer.style.left = "-9999px";
-    tempContainer.style.width = "1200px"; // 增加寬度
-    tempContainer.style.height = "900px"; // 增加高度
-    document.body.appendChild(tempContainer);
+    // 計算總頁數（每頁 32 筆數據）
+    const totalData = Math.min(10000, totalLength);
+    const rowsPerPage = 32;
+    const totalTablePages = Math.ceil(totalData / rowsPerPage);
+    const BATCH_SIZE = 50; // 每批處理 50 頁
 
-    // 使用 echarts 初始化臨時圖表實例
-    const tempChart = echarts.init(tempContainer, props.currentTheme);
+    // 使用 pdf-lib 進行批次匯出和合併
+    const { PDFDocument } = await import("pdf-lib");
+    const mergedPdf = await PDFDocument.create();
 
-    // 獲取當前圖表配置
-    const currentOption = props.chartInstance.getOption();
+    // 生成圖表頁面（第一頁）
+    console.time("PDF 圖表頁面生成");
+    const chartPage = await generateChartPage(currentDisplayLength);
+    console.timeEnd("PDF 圖表頁面生成");
+    const chartPdfBytes = chartPage.output("arraybuffer");
+    const chartPdfDoc = await PDFDocument.load(chartPdfBytes as ArrayBuffer);
+    const chartPages = await mergedPdf.copyPages(
+      chartPdfDoc,
+      chartPdfDoc.getPageIndices()
+    );
+    chartPages.forEach((page) => mergedPdf.addPage(page));
 
-    // 創建乾淨的配置，移除工具列和滑軌，並根據當前顯示範圍調整數據
-    const cleanOption = {
-      ...currentOption,
-      toolbox: { show: false }, // 隱藏工具列
-      dataZoom: undefined, // 完全移除 dataZoom
-      grid: {
-        ...currentOption.grid,
-        bottom: 80,
-        top: 130,
-        left: 80,
-        right: 80,
-      },
-      // 根據當前顯示範圍調整 xAxis 數據
-      xAxis: {
-        ...currentOption.xAxis,
-        data: props.chartData?.categories.slice(startIndex, endIndex) || [],
-      },
-      // 根據當前顯示範圍調整 series 數據
-      series:
-        currentOption.series?.map((series: any) => ({
-          ...series,
-          data: series.data?.slice(startIndex, endIndex) || [],
-        })) || [],
-    };
+    // 批次處理數據表格頁面
+    if (props.chartData && props.seriesData && totalTablePages > 0) {
+      for (
+        let batchStart = 0;
+        batchStart < totalTablePages;
+        batchStart += BATCH_SIZE
+      ) {
+        const batchEnd = Math.min(batchStart + BATCH_SIZE, totalTablePages);
 
-    tempChart.setOption(cleanOption, { notMerge: true });
+        // 生成當前批次的 PDF
+        const batchPdf = await generateBatchTablePages(
+          batchStart,
+          batchEnd,
+          rowsPerPage
+        );
+        const pdfBytes = batchPdf.output("arraybuffer");
 
-    // 等待渲染完成後生成圖片
-    setTimeout(() => {
-      const url = tempChart.getDataURL({
-        type: "png",
-        pixelRatio: 3, // 提高清晰度
-        backgroundColor:
-          props.colorTheme?.[
-            props.currentTheme as keyof typeof props.colorTheme
-          ]?.backgroundColor,
-      });
+        // 載入到 pdf-lib 準備合併
+        const pdfDoc = await PDFDocument.load(pdfBytes as ArrayBuffer);
+        const copiedPages = await mergedPdf.copyPages(
+          pdfDoc,
+          pdfDoc.getPageIndices()
+        );
+        copiedPages.forEach((page) => mergedPdf.addPage(page));
 
-      // 創建一個臨時圖片來獲取尺寸
-      const img = new Image();
-      img.onload = () => {
-        // 計算 PDF 頁面尺寸 (A4: 210mm x 297mm)
-        const pdfWidth = 210;
-        const pdfHeight = 297;
-        const imgWidth = img.width;
-        const imgHeight = img.height;
+        // 清理並延遲，讓瀏覽器 GC 回收記憶體
+        await new Promise((r) => requestAnimationFrame(r));
+        await new Promise((r) => setTimeout(r, 50)); // 額外延遲 50ms
+      }
+    }
 
-        // 計算適合 A4 頁面的圖片尺寸（保持比例）
-        let finalWidth = pdfWidth - 20; // 減少邊距，為更大圖表留空間
-        let finalHeight = (imgHeight * finalWidth) / imgWidth;
+    // 儲存合併後的 PDF
+    const finalPdfBytes = await mergedPdf.save();
+    const blob = new Blob([new Uint8Array(finalPdfBytes)], {
+      type: "application/pdf",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}.pdf`;
+    link.click();
+    URL.revokeObjectURL(url);
 
-        if (finalHeight > pdfHeight - 40) {
-          // 減少頁尾空間
-          finalHeight = pdfHeight - 40;
-          finalWidth = (imgWidth * finalHeight) / imgHeight;
-        }
-
-        // 創建 PDF
-        const pdf = new jsPDF({
-          orientation: finalWidth > finalHeight ? "landscape" : "portrait",
-          unit: "mm",
-          format: "a4",
-        });
-
-        // 第一頁：添加圖表（傳入當前顯示的數據筆數）
-        addChartToPDF(pdf, url, finalWidth, finalHeight, currentDisplayLength);
-
-        // 如果有數據且系列數據存在，添加數據表格頁面
-        if (props.chartData && props.seriesData) {
-          // 固定輸出 10,000 筆資料（若不足則以全量為準）
-          const total = props.chartData.categories.length;
-          const tableStartIndex = 0;
-          const tableEndIndex = Math.min(10000, total);
-          addDataTableToPDF(pdf, tableStartIndex, tableEndIndex);
-        }
-
-        pdf.save(`${filename}.pdf`);
-        ElMessage.success("PDF 導出完成！");
-
-        // 清理臨時圖表
-        tempChart.dispose();
-        document.body.removeChild(tempContainer);
-      };
-
-      img.onerror = () => {
-        ElMessage.error("圖表圖片生成失敗");
-        tempChart.dispose();
-        document.body.removeChild(tempContainer);
-      };
-
-      img.src = url;
-    }, 1000);
+    ElMessage.success("PDF 匯出完成！");
+    console.log(
+      "PDF 檔案大小：",
+      (finalPdfBytes.length / 1024).toFixed(2),
+      "KB"
+    );
   } catch (error) {
-    console.error("PDF 導出失敗:", error);
-    ElMessage.error("PDF 導出失敗，請重試");
+    console.error("PDF 匯出失敗:", error);
+    ElMessage.error("PDF 匯出失敗，請重試");
   }
 };
 
@@ -436,7 +420,8 @@ const addChartToPDF = (
   imageUrl: string,
   width: number,
   height: number,
-  currentDisplayLength: number
+  currentDisplayLength: number,
+  imageFormat: "PNG" | "JPEG" = "JPEG"
 ) => {
   // 添加標題 - 使用英文，使用默認字體
   pdf.setFontSize(20);
@@ -482,11 +467,11 @@ const addChartToPDF = (
     pdf.text(`Total Records: ${currentDisplayLength}`, 9, 50); // 顯示當前顯示的數據筆數
   }
 
-  // 居中添加圖表
+  // 居中添加圖表（使用 JPEG 格式以減少檔案大小）
   const xOffset = (pdf.internal.pageSize.getWidth() - width) / 2;
   const yOffset = 56; // 調整上邊距，為報表類型資訊留空間
 
-  pdf.addImage(imageUrl, "PNG", xOffset, yOffset, width, height);
+  pdf.addImage(imageUrl, imageFormat, xOffset, yOffset, width, height);
 
   // 添加頁尾資訊 - 使用英文，使用默認字體
   pdf.setFontSize(10);
@@ -508,7 +493,7 @@ const addChartToPDF = (
     pdf.internal.pageSize.getHeight() - 10
   );
 
-  // 添加頁碼 - 使用英文，使用默認字體
+  // 添加頁碼
   pdf.text(
     `Page 1`,
     pdf.internal.pageSize.getWidth() - 20,
@@ -516,35 +501,173 @@ const addChartToPDF = (
   );
 };
 
-// 添加數據表格到 PDF
-const addDataTableToPDF = (
-  pdf: jsPDF,
-  startIndex: number,
-  endIndex: number
+// 生成圖表頁面（第一頁）
+const generateChartPage = async (currentDisplayLength: number) => {
+  const pdf = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  // 生成壓縮後的圖表圖片
+  console.time("圖片生成");
+  const chartImage = await generateChartImage();
+  console.timeEnd("圖片生成");
+
+  // 計算適合 A4 頁面的圖片尺寸（保持比例）
+  const pdfWidth = 210;
+  const pdfHeight = 297;
+  const imgWidth = chartImage.width;
+  const imgHeight = chartImage.height;
+
+  let finalWidth = pdfWidth - 20;
+  let finalHeight = (imgHeight * finalWidth) / imgWidth;
+
+  if (finalHeight > pdfHeight - 40) {
+    finalHeight = pdfHeight - 40;
+    finalWidth = (imgWidth * finalHeight) / imgHeight;
+  }
+
+  // 添加到 PDF（使用 JPEG 格式）
+  addChartToPDF(
+    pdf,
+    chartImage.url,
+    finalWidth,
+    finalHeight,
+    currentDisplayLength,
+    "JPEG"
+  );
+
+  return pdf;
+};
+
+// 生成壓縮後的圖表圖片
+const generateChartImage = async () => {
+  const memoryBefore = (performance as any).memory?.usedJSHeapSize || 0;
+  // 獲取當前 dataZoom 的狀態來確定顯示範圍
+  const dataZoomState = props.chartInstance
+    ?.getModel()
+    .getComponent("dataZoom", 0);
+  let currentDataRange = { start: 0, end: 100 };
+
+  if (dataZoomState) {
+    const dataZoomOption = dataZoomState.option;
+    currentDataRange = {
+      start: dataZoomOption.start || 0,
+      end: dataZoomOption.end || 100,
+    };
+  }
+
+  // 計算當前顯示的數據範圍
+  const totalLength = props.chartData?.categories.length || 0;
+  const startIndex = Math.floor((currentDataRange.start / 100) * totalLength);
+  const endIndex = Math.floor((currentDataRange.end / 100) * totalLength);
+
+  // 創建臨時容器來生成乾淨的圖表
+  const tempContainer = document.createElement("div");
+  tempContainer.style.position = "absolute";
+  tempContainer.style.top = "-9999px";
+  tempContainer.style.left = "-9999px";
+  tempContainer.style.width = "1200px";
+  tempContainer.style.height = "900px";
+  document.body.appendChild(tempContainer);
+
+  // 使用 echarts 初始化臨時圖表實例
+  const tempChart = echarts.init(tempContainer, props.currentTheme);
+
+  // 獲取當前圖表配置
+  const currentOption = props.chartInstance?.getOption();
+
+  // 創建乾淨的配置，移除工具列和滑軌，並根據當前顯示範圍調整數據
+  const cleanOption = {
+    ...currentOption,
+    toolbox: { show: false },
+    dataZoom: undefined,
+    grid: {
+      ...currentOption?.grid,
+      bottom: 80,
+      top: 130,
+      left: 80,
+      right: 80,
+    },
+    xAxis: {
+      ...currentOption?.xAxis,
+      data: props.chartData?.categories.slice(startIndex, endIndex) || [],
+    },
+    series:
+      currentOption?.series?.map((series: any) => ({
+        ...series,
+        data: series.data?.slice(startIndex, endIndex) || [],
+      })) || [],
+  };
+
+  tempChart.setOption(cleanOption, { notMerge: true });
+
+  // 等待渲染完成
+  await new Promise((r) => setTimeout(r, 500));
+
+  //  使用 JPEG + 降低 pixelRatio（優化記憶體和檔案大小）
+  //  getDataURL 不支援 quality 參數，JPEG 品質由瀏覽器控制
+  const backgroundColor =
+    props.colorTheme?.[props.currentTheme as keyof typeof props.colorTheme]
+      ?.backgroundColor || "#ffffff";
+
+  const url = tempChart.getDataURL({
+    type: "jpeg",
+    pixelRatio: 1.5, // 從 3 降到 1.5，減少檔案大小和記憶體使用
+    backgroundColor,
+  });
+
+  const memoryAfter = (performance as any).memory?.usedJSHeapSize || 0;
+  console.log("記憶體用量：", (memoryAfter - memoryBefore) / 1024, "KB");
+
+  // 立即清理，讓瀏覽器 GC 回收記憶體
+  tempChart.dispose();
+  document.body.removeChild(tempContainer);
+  await new Promise((r) => requestAnimationFrame(r)); // 讓 GC 回收
+
+  // 獲取圖片尺寸
+  return new Promise<{ url: string; width: number; height: number }>(
+    (resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ url, width: img.width, height: img.height });
+      img.onerror = reject;
+      img.src = url;
+    }
+  );
+};
+
+// 批次生成數據表格頁面
+const generateBatchTablePages = async (
+  startPage: number,
+  endPage: number,
+  rowsPerPage: number
 ) => {
-  if (!props.chartData || !props.seriesData) return;
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  if (!props.chartData || !props.seriesData) return pdf;
 
   // 獲取已啟用的系列
   const enabledSeries = props.seriesData.filter((series) => series.enabled);
 
-  if (enabledSeries.length === 0) {
-    ElMessage.warning("沒有啟用的系列數據可導出");
-    return;
-  }
+  if (enabledSeries.length === 0) return pdf;
 
-  // 準備表格數據 - 只使用當前顯示範圍的數據
+  // 準備表格數據
   const tableHeaders = ["系列", ...enabledSeries.map((series) => series.name)];
+  const totalData = Math.min(10000, props.chartData.categories.length);
   const allData: string[][] = [];
 
-  // 處理當前顯示範圍的數據
-  for (let i = startIndex; i < endIndex; i++) {
+  // 計算當前批次需要處理的數據範圍
+  const batchStartIndex = startPage * rowsPerPage;
+  const batchEndIndex = Math.min(endPage * rowsPerPage, totalData);
+
+  // 處理當前批次的數據
+  for (let i = batchStartIndex; i < batchEndIndex; i++) {
     const row = [props.chartData.categories[i]];
     enabledSeries.forEach((series) => {
       const rawValue = props.chartData!.series[series.name]?.[i] || 0;
-      // 修復 [Object, Object] 問題：確保值是數字
       let value: number;
       if (typeof rawValue === "object" && rawValue !== null) {
-        // 如果是對象，嘗試提取 value 屬性或 sales 屬性
         const objValue = rawValue as any;
         value = objValue.value || objValue.sales || 0;
       } else if (typeof rawValue === "number") {
@@ -557,16 +680,12 @@ const addDataTableToPDF = (
     allData.push(row as string[]);
   }
 
-  // 分頁處理：每頁 20 筆數據
-  const rowsPerPage = 20;
-  const totalPages = Math.ceil(allData.length / rowsPerPage);
+  // 生成當前批次的頁面
+  const batchTotalPages = Math.ceil(allData.length / rowsPerPage);
 
-  for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
-    // 數據表格從第二頁開始，所以第一頁數據表格需要添加新頁面
-    if (pageIndex === 0) {
-      pdf.addPage(); // 添加第二頁用於數據表格
-    } else {
-      pdf.addPage(); // 添加後續頁面
+  for (let pageIndex = 0; pageIndex < batchTotalPages; pageIndex++) {
+    if (pageIndex > 0) {
+      pdf.addPage();
     }
 
     // 計算當前頁的數據範圍
@@ -574,13 +693,17 @@ const addDataTableToPDF = (
     const pageEndIndex = Math.min(pageStartIndex + rowsPerPage, allData.length);
     const pageData = allData.slice(pageStartIndex, pageEndIndex);
 
-    // 添加頁面標題 - 使用英文
+    // 添加頁面標題
     pdf.setFontSize(16);
     pdf.setFont("NotoSansTC", "normal");
     pdf.text("數據表格", 20, 30);
 
+    // 計算實際頁碼（圖表佔第1頁，所以數據表格從第2頁開始）
+    // startPage 是批次頁面索引（0, 1, 2...），pageIndex 是批次內頁面索引（0, 1, 2...）
+    // 實際頁碼 = 圖表頁(1) + 批次開始頁面數 + 批次內頁面索引
+    const actualPageNumber = 2 + startPage + pageIndex;
+
     // 添加表格
-    const currentPageNumber = pageIndex + 2; // 計算當前頁碼（圖表佔第1頁）
     autoTable(pdf, {
       head: [tableHeaders],
       body: pageData,
@@ -608,13 +731,15 @@ const addDataTableToPDF = (
         // 添加頁碼（右下角）
         pdf.setFontSize(10);
         pdf.text(
-          `Page ${currentPageNumber}`,
+          `Page ${actualPageNumber}`,
           pdf.internal.pageSize.getWidth() - 20,
           pdf.internal.pageSize.getHeight() - 10
         );
       },
     });
   }
+
+  return pdf;
 };
 </script>
 
