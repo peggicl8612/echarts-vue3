@@ -14,8 +14,11 @@ import ExportFormat from "@/components/ExportFormat.vue";
 import ToggleReportType from "@/components/ToggleReportType.vue";
 
 const chartRef = ref(null);
+//  要用 let 或 var 宣告，因為在 setup 中，const 是區域變數，不會被回傳出去
 let chartInstance: echarts.ECharts | null = null;
 
+// 添加響應式標記來追蹤初始化狀態
+const isChartInitialized = ref(false);
 // 圖表類型
 const chartTypes = ["line", "bar"];
 const currentType = ref(chartTypes["0"]);
@@ -290,6 +293,7 @@ const initChart = () => {
     chartInstance.dispose();
   }
   chartInstance = echarts.init(chartRef.value, currentTheme.value);
+  isChartInitialized.value = true;
 
   renderChart();
 };
@@ -492,6 +496,19 @@ const renderChart = () => {
     },
   };
 
+  option.dataZoom = [
+    {
+      show: true,
+      type: "slider",
+      start: 0,
+      end: 100,
+    },
+    {
+      type: "inside",
+      start: 0,
+      end: 100,
+    },
+  ];
   option.xAxis = {
     type: "category",
     data: currentChartData.value.categories,
@@ -732,25 +749,22 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <!-- 報表類型切換區 -->
-      <div class="control-section">
-        <ToggleReportType
-          v-model="currentReportType"
-          :chart-data="chartData"
-          @report-type-changed="handleReportTypeChanged"
-        />
-      </div>
-
-      <!-- 導出功能區 -->
+      <!-- 導出格式、報表類型切換區 -->
       <div class="control-section">
         <ExportFormat
           :chart-instance="chartInstance"
+          :chart-initialized="isChartInitialized"
           :current-type="currentType"
           :current-theme="currentTheme"
           :color-theme="colorTheme"
           :chart-data="currentChartData"
           :series-data="seriesData"
           :current-report-type="currentReportType"
+        />
+        <ToggleReportType
+          v-model="currentReportType"
+          :chart-data="chartData"
+          @report-type-changed="handleReportTypeChanged"
         />
       </div>
     </div>

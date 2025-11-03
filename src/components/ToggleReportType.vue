@@ -362,60 +362,6 @@ const aggregateDataYearly = (
   return yearlyData;
 };
 
-// 滑軌控制函數
-const updateDailyRange = (start: number, end: number) => {
-  const catsLen = props.chartData?.categories?.length || 0;
-  // 正規化：限制在有效索引、並確保 start <= end
-  let s = Math.max(0, Math.min(start, Math.max(0, catsLen - 1)));
-  let e = Math.max(0, Math.min(end, Math.max(0, catsLen - 1)));
-  if (s > e) {
-    const tmp = s;
-    s = e;
-    e = tmp;
-  }
-  dailyRange.value = { start: s, end: e };
-  if (currentReportType.value === "daily" && props.chartData) {
-    const aggregatedData = aggregateData(props.chartData, "daily");
-    emit("reportTypeChanged", {
-      reportType: "daily",
-      aggregatedData,
-    });
-  }
-};
-
-const updateMonthlyRange = (start: number, end: number) => {
-  const total = (() => {
-    const cats = props.chartData?.categories || [];
-    const set = new Set(
-      cats.map((d) => {
-        const dt = new Date(d);
-        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
-          2,
-          "0"
-        )}`;
-      })
-    );
-    return set.size;
-  })();
-
-  // 正規化：限制在 0..total-1，並確保 start <= end
-  let s = Math.max(0, Math.min(start, Math.max(0, total - 1)));
-  let e = Math.max(0, Math.min(end, Math.max(0, total - 1)));
-  if (s > e) {
-    const tmp = s;
-    s = e;
-    e = tmp;
-  }
-  monthlyRange.value = { start: s, end: e };
-  if (currentReportType.value === "monthly" && props.chartData) {
-    const aggregatedData = aggregateData(props.chartData, "monthly");
-    emit("reportTypeChanged", {
-      reportType: "monthly",
-      aggregatedData,
-    });
-  }
-};
-
 // 報表類型切換函數
 const switchReportType = (reportType: string) => {
   console.log("切換報表類型:", reportType);
@@ -435,21 +381,6 @@ const switchReportType = (reportType: string) => {
     reportType,
     aggregatedData: aggregatedData,
   });
-};
-
-// 工具：取得月份總數
-const getMonthCount = () => {
-  const cats = props.chartData?.categories || [];
-  const set = new Set(
-    cats.map((d) => {
-      const dt = new Date(d);
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}`;
-    })
-  );
-  return set.size;
 };
 
 // 同步父層 v-model
@@ -501,94 +432,6 @@ watch(
       >
         {{ reportType.label }}
       </button>
-    </div>
-
-    <!-- 滑軌控制 -->
-    <div
-      v-if="currentReportType === 'daily'"
-      class="range-control"
-      :key="`daily-${rangeKey}`"
-    >
-      <div class="range-label">日報表範圍</div>
-      <div class="dual-slider">
-        <!-- 左把手（開始） -->
-        <input
-          type="range"
-          class="range start"
-          :min="0"
-          :max="(props.chartData?.categories.length || 0) - 1"
-          v-model="dailyRange.start"
-          @input="updateDailyRange(dailyRange.start, dailyRange.end)"
-        />
-        <!-- 右把手（結束） -->
-        <input
-          type="range"
-          class="range end"
-          :min="0"
-          :max="(props.chartData?.categories.length || 0) - 1"
-          v-model="dailyRange.end"
-          @input="updateDailyRange(dailyRange.start, dailyRange.end)"
-        />
-        <!-- 已選區間的著色條 -->
-        <div
-          class="range-fill"
-          :style="{
-            left:
-              (Math.min(dailyRange.start, dailyRange.end) /
-                ((props.chartData?.categories.length || 1) - 1)) *
-                100 +
-              '%',
-            right:
-              (1 -
-                Math.max(dailyRange.start, dailyRange.end) /
-                  ((props.chartData?.categories.length || 1) - 1)) *
-                100 +
-              '%',
-          }"
-        />
-      </div>
-    </div>
-
-    <div
-      v-if="currentReportType === 'monthly'"
-      class="range-control"
-      :key="`monthly-${rangeKey}`"
-    >
-      <div class="range-label">月報表範圍</div>
-      <div class="dual-slider">
-        <input
-          type="range"
-          class="range start"
-          :min="0"
-          :max="(getMonthCount() || 1) - 1"
-          v-model="monthlyRange.start"
-          @input="updateMonthlyRange(monthlyRange.start, monthlyRange.end)"
-        />
-        <input
-          type="range"
-          class="range end"
-          :min="0"
-          :max="(getMonthCount() || 1) - 1"
-          v-model="monthlyRange.end"
-          @input="updateMonthlyRange(monthlyRange.start, monthlyRange.end)"
-        />
-        <div
-          class="range-fill"
-          :style="{
-            left:
-              (Math.min(monthlyRange.start, monthlyRange.end) /
-                ((getMonthCount() || 1) - 1)) *
-                100 +
-              '%',
-            right:
-              (1 -
-                Math.max(monthlyRange.start, monthlyRange.end) /
-                  ((getMonthCount() || 1) - 1)) *
-                100 +
-              '%',
-          }"
-        />
-      </div>
     </div>
   </div>
 </template>

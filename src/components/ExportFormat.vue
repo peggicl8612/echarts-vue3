@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { ref } from "vue";
+import { ref, watchEffect } from "vue";
 import { ElMessage } from "element-plus";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -8,6 +8,7 @@ import "@/assets/fonts/NotoSansTC.js";
 
 interface Props {
   chartInstance?: any;
+  chartInitialized?: boolean;
   currentType?: string;
   currentTheme?: string;
   colorTheme?: {
@@ -83,6 +84,7 @@ const exportChart = (format: string) => {
         break;
       default:
         ElMessage.error("不支持的導出格式");
+        isExporting.value = false;
     }
   } catch (error) {
     console.error("導出失敗:", error);
@@ -182,7 +184,7 @@ const exportAsImage = (type: "png" | "jpeg", filename: string) => {
       // 清理
       tempChart.dispose();
       document.body.removeChild(tempContainer);
-
+      isExporting.value = false;
       ElMessage.success(`已導出為 ${type.toUpperCase()} 格式`);
     }, 1000);
   } catch (error) {
@@ -296,7 +298,7 @@ const exportAsSVG = (filename: string) => {
       URL.revokeObjectURL(url);
       tempChart.dispose();
       document.body.removeChild(tempContainer);
-
+      isExporting.value = false;
       ElMessage.success("已導出為 SVG 格式");
     }, 1000);
   } catch (error) {
@@ -401,7 +403,7 @@ const exportAsPDF = async (filename: string) => {
     link.download = `${filename}.pdf`;
     link.click();
     URL.revokeObjectURL(url);
-
+    isExporting.value = false;
     ElMessage.success("PDF 匯出完成！");
     console.log(
       "PDF 檔案大小：",
@@ -467,11 +469,29 @@ const addChartToPDF = (
     pdf.text(`Total Records: ${currentDisplayLength}`, 9, 50); // 顯示當前顯示的數據筆數
   }
 
-  // 居中添加圖表（使用 JPEG 格式以減少檔案大小）
-  const xOffset = (pdf.internal.pageSize.getWidth() - width) / 2;
-  const yOffset = 56; // 調整上邊距，為報表類型資訊留空間
+  // 計算圖表位置，確保不會超出頁面
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const yOffset = 56; // 圖表開始位置
+  const footerSpace = 10; // 頁尾空間
 
-  pdf.addImage(imageUrl, imageFormat, xOffset, yOffset, width, height);
+  // 確保圖表高度不超過可用空間
+  const maxAvailableHeight = pageHeight - yOffset - footerSpace;
+  const actualHeight = Math.min(height, maxAvailableHeight);
+  const actualWidth =
+    actualHeight === height ? width : (width * actualHeight) / height;
+
+  // 居中添加圖表
+  const xOffset = (pageWidth - actualWidth) / 2;
+
+  pdf.addImage(
+    imageUrl,
+    imageFormat,
+    xOffset,
+    yOffset,
+    actualWidth,
+    actualHeight
+  );
 
   // 添加頁尾資訊 - 使用英文，使用默認字體
   pdf.setFontSize(10);
@@ -515,16 +535,27 @@ const generateChartPage = async (currentDisplayLength: number) => {
   console.timeEnd("圖片生成");
 
   // 計算適合 A4 頁面的圖片尺寸（保持比例）
-  const pdfWidth = 210;
-  const pdfHeight = 297;
+  const pdfWidth = 210; // A4 寬度
+  const pdfHeight = 297; // A4 高度
+
+  // 計算實際可用空間
+  // yOffset: 56mm（圖表開始位置，考慮標題等資訊）
+  // 頁尾空間: 10mm（頁尾在底部 10mm）
+  const yOffset = 56;
+  const footerSpace = 10;
+  const availableHeight = pdfHeight - yOffset - footerSpace; // 231mm
+
   const imgWidth = chartImage.width;
   const imgHeight = chartImage.height;
 
-  let finalWidth = pdfWidth - 20;
+  // 計算圖表寬度（留邊距）
+  const horizontalMargin = 20;
+  let finalWidth = pdfWidth - horizontalMargin;
   let finalHeight = (imgHeight * finalWidth) / imgWidth;
 
-  if (finalHeight > pdfHeight - 40) {
-    finalHeight = pdfHeight - 40;
+  // 確保圖表高度不超過實際可用高度
+  if (finalHeight > availableHeight) {
+    finalHeight = availableHeight;
     finalWidth = (imgWidth * finalHeight) / imgHeight;
   }
 
@@ -741,6 +772,11 @@ const generateBatchTablePages = async (
 
   return pdf;
 };
+// 監聽圖表初始化狀態
+watchEffect(() => {
+  if (props.chartInitialized && props.chartInstance) {
+  }
+});
 </script>
 
 <template>
