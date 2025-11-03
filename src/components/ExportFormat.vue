@@ -469,17 +469,29 @@ const addChartToPDF = (
     pdf.text(`Total Records: ${currentDisplayLength}`, 9, 50); // 顯示當前顯示的數據筆數
   }
 
-  // 計算圖表位置，確保不會超出頁面
+  // 計算圖表位置 - 居中顯示，保持原始比例
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const yOffset = 56; // 圖表開始位置
   const footerSpace = 10; // 頁尾空間
 
-  // 確保圖表高度不超過可用空間
-  const maxAvailableHeight = pageHeight - yOffset - footerSpace;
-  const actualHeight = Math.min(height, maxAvailableHeight);
-  const actualWidth =
-    actualHeight === height ? width : (width * actualHeight) / height;
+  // 計算可用空間
+  const availableWidth = pageWidth - 20; // 留邊距
+  const availableHeight = pageHeight - yOffset - footerSpace;
+
+  // 保持圖表原始比例，計算實際顯示尺寸
+  let actualWidth = width;
+  let actualHeight = height;
+
+  // 如果圖表尺寸超過可用空間，按比例縮放
+  const widthRatio = availableWidth / width;
+  const heightRatio = availableHeight / height;
+  const scaleRatio = Math.min(widthRatio, heightRatio);
+
+  if (scaleRatio < 1) {
+    actualWidth = width * scaleRatio;
+    actualHeight = height * scaleRatio;
+  }
 
   // 居中添加圖表
   const xOffset = (pageWidth - actualWidth) / 2;
@@ -521,50 +533,63 @@ const addChartToPDF = (
   );
 };
 
-// 生成圖表頁面（第一頁）
+// 生成圖表頁面（第一頁）- 根據圖表尺寸動態調整 PDF 大小
 const generateChartPage = async (currentDisplayLength: number) => {
-  const pdf = new jsPDF({
-    orientation: "portrait",
-    unit: "mm",
-    format: "a4",
-  });
-
   // 生成壓縮後的圖表圖片
   console.time("圖片生成");
   const chartImage = await generateChartImage();
   console.timeEnd("圖片生成");
 
-  // 計算適合 A4 頁面的圖片尺寸（保持比例）
-  const pdfWidth = 210; // A4 寬度
-  const pdfHeight = 297; // A4 高度
-
-  // 計算實際可用空間
-  // yOffset: 56mm（圖表開始位置，考慮標題等資訊）
-  // 頁尾空間: 10mm（頁尾在底部 10mm）
-  const yOffset = 56;
-  const footerSpace = 10;
-  const availableHeight = pdfHeight - yOffset - footerSpace; // 231mm
-
+  // 計算圖表的原始尺寸和比例
   const imgWidth = chartImage.width;
   const imgHeight = chartImage.height;
+  const imgAspectRatio = imgWidth / imgHeight;
 
-  // 計算圖表寬度（留邊距）
-  const horizontalMargin = 20;
-  let finalWidth = pdfWidth - horizontalMargin;
-  let finalHeight = (imgHeight * finalWidth) / imgWidth;
+  // PDF 頁面配置
+  const headerHeight = 56; // 標題等資訊的高度（mm）
+  const footerHeight = 10; // 頁尾高度（mm）
+  const margin = 20; // 邊距（mm）
+  const baseA4Width = 210; // A4 寬度（mm）
+  const baseA4Height = 297; // A4 高度（mm）
 
-  // 確保圖表高度不超過實際可用高度
-  if (finalHeight > availableHeight) {
-    finalHeight = availableHeight;
-    finalWidth = (imgWidth * finalHeight) / imgHeight;
+  // 計算圖表在 PDF 中的最佳尺寸（保持原始比例）
+  // 先嘗試使用 A4 寬度計算
+  let chartWidth = baseA4Width - margin * 2; // 170mm
+  let chartHeight = chartWidth / imgAspectRatio;
+
+  // 如果高度超過 A4，改用高度計算
+  const maxHeightInA4 = baseA4Height - headerHeight - footerHeight - margin;
+  if (chartHeight > maxHeightInA4) {
+    chartHeight = maxHeightInA4;
+    chartWidth = chartHeight * imgAspectRatio;
   }
+
+  // 計算所需的 PDF 頁面尺寸
+  const requiredWidth = Math.max(baseA4Width, chartWidth + margin * 2);
+  const requiredHeight = Math.max(
+    baseA4Height,
+    chartHeight + headerHeight + footerHeight + margin
+  );
+
+  // 根據尺寸決定 PDF 方向
+  const isLandscape = requiredWidth > requiredHeight;
+
+  // 創建 PDF（如果尺寸超過 A4，使用自定義大小）
+  const pdf = new jsPDF({
+    orientation: isLandscape ? "landscape" : "portrait",
+    unit: "mm",
+    format:
+      requiredWidth <= baseA4Width && requiredHeight <= baseA4Height
+        ? "a4"
+        : [requiredWidth, requiredHeight],
+  });
 
   // 添加到 PDF（使用 JPEG 格式）
   addChartToPDF(
     pdf,
     chartImage.url,
-    finalWidth,
-    finalHeight,
+    chartWidth,
+    chartHeight,
     currentDisplayLength,
     "JPEG"
   );
@@ -595,12 +620,13 @@ const generateChartImage = async () => {
   const endIndex = Math.floor((currentDataRange.end / 100) * totalLength);
 
   // 創建臨時容器來生成乾淨的圖表
+  // 增加高度以容納旋轉的 X 軸標籤
   const tempContainer = document.createElement("div");
   tempContainer.style.position = "absolute";
   tempContainer.style.top = "-9999px";
   tempContainer.style.left = "-9999px";
   tempContainer.style.width = "1200px";
-  tempContainer.style.height = "900px";
+  tempContainer.style.height = "1000px"; // 從 900px 增加到 1000px，為 X 軸標籤留更多空間
   document.body.appendChild(tempContainer);
 
   // 使用 echarts 初始化臨時圖表實例
@@ -610,21 +636,94 @@ const generateChartImage = async () => {
   const currentOption = props.chartInstance?.getOption();
 
   // 創建乾淨的配置，移除工具列和滑軌，並根據當前顯示範圍調整數據
+  // 檢查是否有旋轉的標籤，如果有則增加底部空間
+  const labelRotate = currentOption?.xAxis?.axisLabel?.rotate || 0;
+  const hasRotatedLabels = labelRotate !== 0;
+
+  // 計算所需的底部空間（考慮旋轉標籤）
+  // 如果標籤旋轉（如 -45 度），需要額外空間來顯示旋轉後的標籤
+  // 旋轉角度越大，需要的底部空間越多
+  const bottomSpace = hasRotatedLabels
+    ? Math.max(120, 80 + (Math.abs(labelRotate) / 45) * 50) // 根據旋轉角度增加空間（-45度需要約120）
+    : 80;
+
   const cleanOption = {
     ...currentOption,
     toolbox: { show: false },
     dataZoom: undefined,
     grid: {
       ...currentOption?.grid,
-      bottom: 80,
+      bottom: bottomSpace, // 動態計算底部空間
       top: 130,
       left: 80,
       right: 80,
+      containLabel: true, // 確保標籤不被裁切，這很重要
     },
-    xAxis: {
-      ...currentOption?.xAxis,
-      data: props.chartData?.categories.slice(startIndex, endIndex) || [],
-    },
+    xAxis: Array.isArray(currentOption?.xAxis)
+      ? currentOption.xAxis.map((axis: any) => ({
+          ...axis,
+          data: props.chartData?.categories.slice(startIndex, endIndex) || [],
+        }))
+      : {
+          ...currentOption?.xAxis,
+          type: currentOption?.xAxis?.type || "category",
+          data: props.chartData?.categories.slice(startIndex, endIndex) || [],
+          // 完整保留所有 xAxis 配置，確保標籤正確顯示
+          axisLabel: currentOption?.xAxis?.axisLabel
+            ? {
+                ...currentOption.xAxis.axisLabel,
+                // 確保標籤顯示（預設為 true）
+                show: true, // 強制顯示標籤
+                // 根據切片後的數據長度重新計算 interval，確保標籤不會全部被隱藏
+                // 如果有 interval，確保它不會太大導致沒有標籤顯示
+                interval: (() => {
+                  const slicedDataLength =
+                    props.chartData?.categories.slice(startIndex, endIndex)
+                      .length || 0;
+                  if (
+                    currentOption.xAxis.axisLabel.interval === undefined ||
+                    currentOption.xAxis.axisLabel.interval === null
+                  ) {
+                    // 如果沒有設置 interval，根據數據長度自動計算
+                    return slicedDataLength > 50
+                      ? Math.floor(slicedDataLength / 10)
+                      : 0;
+                  }
+                  // 如果原始 interval 太大，根據切片後的數據調整
+                  const originalInterval =
+                    currentOption.xAxis.axisLabel.interval;
+                  const originalDataLength =
+                    props.chartData?.categories.length || slicedDataLength;
+                  // 按比例調整 interval
+                  const adjustedInterval = Math.max(
+                    0,
+                    Math.floor(
+                      (originalInterval / originalDataLength) * slicedDataLength
+                    )
+                  );
+                  // 確保至少有一些標籤顯示（如果數據少於 20 個，每個都顯示）
+                  return slicedDataLength <= 20 ? 0 : adjustedInterval;
+                })(),
+              }
+            : {
+                show: true, // 如果沒有配置，至少確保顯示
+                rotate: -45, // 預設旋轉角度
+                margin: 15,
+                fontSize: 11,
+                // 根據切片後的數據長度設置 interval
+                interval: (() => {
+                  const slicedDataLength =
+                    props.chartData?.categories.slice(startIndex, endIndex)
+                      .length || 0;
+                  return slicedDataLength > 50
+                    ? Math.floor(slicedDataLength / 10)
+                    : 0;
+                })(),
+              },
+          // 確保 axisLine 和 axisTick 也存在
+          axisLine: currentOption?.xAxis?.axisLine || { show: true },
+          axisTick: currentOption?.xAxis?.axisTick || { show: true },
+        },
     series:
       currentOption?.series?.map((series: any) => ({
         ...series,
@@ -634,8 +733,31 @@ const generateChartImage = async () => {
 
   tempChart.setOption(cleanOption, { notMerge: true });
 
-  // 等待渲染完成
-  await new Promise((r) => setTimeout(r, 500));
+  // 強制觸發渲染，確保圖表正確初始化
+  tempChart.resize();
+
+  // 等待圖表完全渲染 - 使用多種方法確保渲染完成
+  await new Promise((r) => setTimeout(r, 800)); // 增加基礎等待時間
+
+  // 使用 ECharts finished 事件確保渲染完成（更可靠）
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      // 如果 2 秒內沒有觸發 finished 事件，也繼續執行
+      resolve();
+    }, 2000);
+
+    const handler = () => {
+      clearTimeout(timeout);
+      tempChart.off("finished", handler);
+      resolve();
+    };
+
+    tempChart.on("finished", handler);
+  });
+
+  // 再次強制觸發 resize，確保所有元素都正確繪製
+  tempChart.resize();
+  await new Promise((r) => setTimeout(r, 300)); // 額外等待確保渲染完成
 
   //  使用 JPEG + 降低 pixelRatio（優化記憶體和檔案大小）
   //  getDataURL 不支援 quality 參數，JPEG 品質由瀏覽器控制
