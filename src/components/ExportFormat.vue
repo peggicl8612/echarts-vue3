@@ -340,7 +340,7 @@ const exportAsPDF = async (filename: string) => {
     const currentDisplayLength = endIndex - startIndex;
 
     // 計算總頁數（每頁 32 筆數據）
-    const totalData = Math.min(10000, totalLength);
+    const totalData = totalLength;
     const rowsPerPage = 32;
     const totalTablePages = Math.ceil(totalData / rowsPerPage);
     const BATCH_SIZE = 50; // 每批處理 50 頁
@@ -807,7 +807,7 @@ const generateBatchTablePages = async (
 
   // 準備表格數據
   const tableHeaders = ["系列", ...enabledSeries.map((series) => series.name)];
-  const totalData = Math.min(10000, props.chartData.categories.length);
+  const totalData = props.chartData.categories.length;
   const allData: string[][] = [];
 
   // 計算當前批次需要處理的數據範圍

@@ -196,76 +196,28 @@ const loadTestData = async () => {
     }
 
     // 讀取既有測試資料
-    const response = await fetch("/data/testData.json");
+    const response = await fetch("/data/testData_10.json");
     if (!response.ok) throw new Error("無法載入測試數據");
     const testData = await response.json();
 
-    // 建立完整日期範圍：1997-01-01 ~ 2024-12-31
-    const fullStart = new Date("1997-01-01");
-    const fullEnd = new Date("2024-12-31");
-    const categories: string[] = [];
-    for (
-      let d = new Date(fullStart);
-      d <= fullEnd;
-      d.setDate(d.getDate() + 1)
-    ) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const dd = String(d.getDate()).padStart(2, "0");
-      categories.push(`${y}-${m}-${dd}`);
-    }
-
-    // 原始資料的日期 -> index 對照
-    const originalCategories: string[] = testData.categories || [];
-    const catToIndex = new Map<string, number>();
-    for (let i = 0; i < originalCategories.length; i++) {
-      const cat = originalCategories[i];
-      if (typeof cat === "string" && cat) {
-        catToIndex.set(cat, i);
-      }
-    }
-
-    // 擴展各系列資料到完整日期範圍
-    const series: Record<string, number[]> = {};
+    // 使用原始資歷的 categories 和 series
+    const categories: string[] = testData.categories || [];
+    const series: Record<string, number[]> = testData.series || {};
     const seriesNames: string[] =
-      testData.seriesNames || Object.keys(testData.series || {});
+      testData.seriesNames || Object.keys(testData.series) || {};
 
     seriesNames.forEach((name: string) => {
-      const orig: number[] = (testData.series && testData.series[name]) || [];
-      const avg =
-        orig.length > 0
-          ? Math.max(
-              1,
-              Math.round(orig.reduce((a, b) => a + b, 0) / orig.length)
-            )
-          : 100;
-      const lastVal = orig.length > 0 ? orig[orig.length - 1] : avg;
-      const firstVal = orig.length > 0 ? orig[0] : avg;
-      const firstBase: number = typeof firstVal === "number" ? firstVal : avg;
-      const lastBase: number = typeof lastVal === "number" ? lastVal : avg;
-
-      const arr: number[] = [];
-      for (let i = 0; i < categories.length; i++) {
-        const date: string = categories[i] as string;
-        const idx = catToIndex.get(date);
-        if (idx !== undefined && idx >= 0 && idx < orig.length) {
-          arr.push(Number(orig[idx]) || 0);
+      const orig: number[] = series[name] || [];
+      if (orig.length !== categories.length) {
+        if (orig.length < categories.length) {
+          const lastVal = orig.length > 0 ? orig[orig.length - 1] : 0;
+          while (orig.length < categories.length) {
+            orig.push(lastVal as number);
+          }
         } else {
-          // 補值：使用平滑趨勢 + 季節性 + 小噪聲，並以首/末值為基線
-          const yearlyTrend = (i / categories.length) * 40;
-          const seasonal = Math.sin((i / 365) * 2 * Math.PI) * 15;
-          const weekly = i % 7 >= 5 ? -4 : 0;
-          const base: number = i < categories.length / 2 ? firstBase : lastBase;
-          const noise = (Math.random() - 0.5) * 10;
-          arr.push(
-            Math.max(
-              0,
-              Math.round(base + yearlyTrend + seasonal + weekly + noise)
-            )
-          );
+          series[name] = orig.slice(0, categories.length);
         }
       }
-      series[name] = arr;
     });
 
     // 發送資料給父組件
@@ -275,8 +227,12 @@ const loadTestData = async () => {
       seriesNames,
     });
 
+    const startDate = categories.length > 0 ? categories[0] : "";
+    const endDate =
+      categories.length > 0 ? categories[categories.length - 1] : "";
+
     ElMessage.success(
-      `已載入測試數據，日期範圍 1997/01/01 ~ 2024/12/31（${categories.length} 筆）`
+      `已載入測試數據，日期範圍 ${startDate} ~ ${endDate} (${categories.length} 筆）`
     );
   } catch (error) {
     console.error("載入測試數據失敗:", error);
