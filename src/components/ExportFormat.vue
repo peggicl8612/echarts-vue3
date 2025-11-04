@@ -374,8 +374,6 @@ const exportAsPDF = async (filename: string) => {
 
     // 批次處理數據表格頁面
     if (props.chartData && props.seriesData && totalTablePages > 0) {
-      const totalBatches = Math.ceil(totalTablePages / BATCH_SIZE);
-
       for (
         let batchStart = 0;
         batchStart < totalTablePages;
@@ -1017,7 +1015,7 @@ watchEffect(() => {
     }
 
     .export-progress-wrapper {
-      margin-top: 2px;
+      margin-top: 10px;
       padding: 4px 6px;
       background: rgba(255, 255, 255, 0.05);
       border-radius: 8px;
