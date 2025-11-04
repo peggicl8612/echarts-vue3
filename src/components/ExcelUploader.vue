@@ -184,7 +184,6 @@ const clearUploadedFile = () => {
   ElMessage.success("已重置為預設資料");
 };
 
-// 載入測試數據（從 testData.json 讀取，並擴展日期至 1997-01-01 ~ 2024-12-31）
 const loadTestData = async () => {
   try {
     ElMessage.info("正在載入測試數據...");

@@ -1,4 +1,4 @@
- <script setup lang="ts">
+<script setup lang="ts">
 import * as echarts from "echarts";
 import "echarts-gl";
 import { ElMessage } from "element-plus";
@@ -536,7 +536,7 @@ const renderChart = () => {
           return Math.floor(totalLength / 15);
         } else if (totalLength > 10000) {
           return Math.floor(totalLength / 10);
-        } else   {
+        } else {
           return Math.floor(totalLength / 30);
         }
       })(),
@@ -781,6 +781,11 @@ onBeforeUnmount(() => {
 
       <!-- 導出格式、報表類型切換區 -->
       <div class="control-section">
+        <ToggleReportType
+          v-model="currentReportType"
+          :chart-data="chartData"
+          @report-type-changed="handleReportTypeChanged"
+        />
         <ExportFormat
           :chart-instance="chartInstance"
           :chart-initialized="isChartInitialized"
@@ -790,11 +795,6 @@ onBeforeUnmount(() => {
           :chart-data="currentChartData"
           :series-data="seriesData"
           :current-report-type="currentReportType"
-        />
-        <ToggleReportType
-          v-model="currentReportType"
-          :chart-data="chartData"
-          @report-type-changed="handleReportTypeChanged"
         />
       </div>
     </div>
@@ -854,7 +854,7 @@ onBeforeUnmount(() => {
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.2);
     margin-bottom: 20px;
-
+    min-height: 200px;
     .dark-mode & {
       background: rgba(255, 255, 255, 0.05);
       border-color: rgba(255, 255, 255, 0.1);

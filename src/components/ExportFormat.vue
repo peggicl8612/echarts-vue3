@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import { ref, watchEffect } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElProgress } from "element-plus";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as echarts from "echarts";
@@ -53,6 +53,11 @@ const exportFormats = [
   { type: "pdf", label: "PDF" },
 ];
 
+// 匯出進度
+const exportProgress = ref(0);
+const isExportingProgress = ref(false);
+// 匯出進度 % 數文字顯示
+const exportProgressText = ref("");
 // 導出圖表
 const exportChart = (format: string) => {
   if (!props.chartInstance) {
@@ -314,10 +319,13 @@ const exportAsPDF = async (filename: string) => {
     ElMessage.error("圖表未初始化");
     return;
   }
+  // 開啟進度條
+  isExportingProgress.value = true;
+  exportProgress.value = 0;
+  exportProgressText.value = "準備中...";
 
   try {
     isExporting.value = true;
-    ElMessage.info("正在生成 PDF，請稍候...");
 
     // 獲取當前 dataZoom 的狀態來確定顯示範圍
     const dataZoomState = props.chartInstance
@@ -343,16 +351,19 @@ const exportAsPDF = async (filename: string) => {
     const totalData = totalLength;
     const rowsPerPage = 32;
     const totalTablePages = Math.ceil(totalData / rowsPerPage);
-    const BATCH_SIZE = 50; // 每批處理 50 頁
+
+    const BATCH_SIZE = totalData > 100000 ? 20 : totalData > 50000 ? 30 : 50;
 
     // 使用 pdf-lib 進行批次匯出和合併
     const { PDFDocument } = await import("pdf-lib");
     const mergedPdf = await PDFDocument.create();
 
     // 生成圖表頁面（第一頁）
+    exportProgress.value = 5;
     console.time("PDF 圖表頁面生成");
     const chartPage = await generateChartPage(currentDisplayLength);
     console.timeEnd("PDF 圖表頁面生成");
+    exportProgress.value = 10;
     const chartPdfBytes = chartPage.output("arraybuffer");
     const chartPdfDoc = await PDFDocument.load(chartPdfBytes as ArrayBuffer);
     const chartPages = await mergedPdf.copyPages(
@@ -363,13 +374,21 @@ const exportAsPDF = async (filename: string) => {
 
     // 批次處理數據表格頁面
     if (props.chartData && props.seriesData && totalTablePages > 0) {
+      const totalBatches = Math.ceil(totalTablePages / BATCH_SIZE);
+
       for (
         let batchStart = 0;
         batchStart < totalTablePages;
         batchStart += BATCH_SIZE
       ) {
         const batchEnd = Math.min(batchStart + BATCH_SIZE, totalTablePages);
+        // const currentBatch = Math.floor(batchStart / BATCH_SIZE) + 1;
 
+        // 計算進度：10% 用於圖表頁面，90% 用於數據表格
+        const tableProgress = (batchStart / totalTablePages) * 90;
+        exportProgress.value = Math.floor(10 + tableProgress);
+
+        exportProgressText.value = `正在生成數據表格，${batchStart}/${totalTablePages} 頁)`;
         // 生成當前批次的 PDF
         const batchPdf = await generateBatchTablePages(
           batchStart,
@@ -390,9 +409,12 @@ const exportAsPDF = async (filename: string) => {
         await new Promise((r) => requestAnimationFrame(r));
         await new Promise((r) => setTimeout(r, 50)); // 額外延遲 50ms
       }
+      exportProgress.value = 95;
+      exportProgressText.value = "數據表格生成完成";
     }
 
     // 儲存合併後的 PDF
+    exportProgress.value = 96;
     const finalPdfBytes = await mergedPdf.save();
     const blob = new Blob([new Uint8Array(finalPdfBytes)], {
       type: "application/pdf",
@@ -404,6 +426,16 @@ const exportAsPDF = async (filename: string) => {
     link.click();
     URL.revokeObjectURL(url);
     isExporting.value = false;
+    exportProgress.value = 100;
+    exportProgressText.value = "匯出完成！";
+
+    // 延遲關閉進度條，讓用戶看到完成訊息
+    setTimeout(() => {
+      isExportingProgress.value = false;
+      exportProgress.value = 0;
+      exportProgressText.value = "";
+    }, 2000);
+
     ElMessage.success("PDF 匯出完成！");
     console.log(
       "PDF 檔案大小：",
@@ -413,6 +445,10 @@ const exportAsPDF = async (filename: string) => {
   } catch (error) {
     console.error("PDF 匯出失敗:", error);
     ElMessage.error("PDF 匯出失敗，請重試");
+    isExporting.value = false;
+    isExportingProgress.value = false;
+    exportProgress.value = 0;
+    exportProgressText.value = "匯出失敗";
   }
 };
 
@@ -912,9 +948,27 @@ watchEffect(() => {
           @click="exportChart(format.type)"
           class="export-btn"
           :title="`導出為${format.label}`"
+          :disabled="isExporting"
         >
           {{ format.label }}
         </button>
+      </div>
+
+      <!-- 匯出進度條 -->
+      <div v-if="isExportingProgress" class="export-progress-wrapper">
+        <div class="progress-header">
+          <span class="progress-title">匯出進度</span>
+          <span class="progress-percentage">{{ exportProgress }}%</span>
+        </div>
+        <ElProgress
+          :percentage="exportProgress"
+          :status="exportProgress === 100 ? 'success' : undefined"
+          :stroke-width="8"
+          :show-text="false"
+        />
+        <div v-if="exportProgressText" class="progress-text">
+          {{ exportProgressText }}
+        </div>
       </div>
     </div>
   </div>
@@ -953,6 +1007,45 @@ watchEffect(() => {
 
       &:active {
         transform: translateY(0);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+    }
+
+    .export-progress-wrapper {
+      margin-top: 2px;
+      padding: 4px 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+
+      .progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .progress-title {
+          font-size: 13px;
+          font-weight: 600;
+          color: #fff;
+        }
+
+        .progress-percentage {
+          font-size: 14px;
+          font-weight: 600;
+          color: #73cc8b;
+        }
+      }
+
+      .progress-text {
+        margin-top: 2px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.8);
+        text-align: center;
       }
     }
   }
