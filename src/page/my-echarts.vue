@@ -1,5 +1,6 @@
-<script setup lang="ts">
+ <script setup lang="ts">
 import * as echarts from "echarts";
+import "echarts-gl";
 import { ElMessage } from "element-plus";
 import {
   ref,
@@ -301,9 +302,12 @@ const initChart = () => {
 // 根據 currentType 渲染圖表
 const renderChart = () => {
   const themeConfig = colorTheme[currentTheme.value as keyof typeof colorTheme];
-
   // 獲取啟用的系列
   const enabledSeries = seriesData.filter((series) => series.enabled);
+
+  // 檢測數據量
+  const dataLength = currentChartData.value.categories.length;
+  const isLargeDataset = dataLength > 10000;
 
   // 圖表標題位置調整
   const option: echarts.EChartsOption = {
@@ -311,7 +315,7 @@ const renderChart = () => {
       text: importedFileName.value
         ? `${importedFileName.value} - ${currentType.value?.toUpperCase()} 圖表`
         : isTestDataMode.value
-        ? `各產品近三年銷售率 - ${currentType.value?.toUpperCase()} 圖表`
+        ? `各產品類別近三年銷售率 - ${currentType.value?.toUpperCase()} 圖表`
         : `Mars eSIM 產品分析 - ${currentType.value?.toUpperCase()} 圖表`,
       left: "center",
       top: 10,
@@ -502,11 +506,15 @@ const renderChart = () => {
       type: "slider",
       start: 0,
       end: 100,
+      filterMode: "weakFilter",
+      throttle: isLargeDataset ? 100 : 0,
     },
     {
       type: "inside",
       start: 0,
       end: 100,
+      filterMode: "weakFilter",
+      throttle: isLargeDataset ? 100 : 0,
     },
   ];
   option.xAxis = {
@@ -519,7 +527,19 @@ const renderChart = () => {
     },
     axisLabel: {
       rotate: -45,
-      interval: Math.floor(currentChartData.value.categories.length / 10), // 自動調整顯示間隔
+      // 根據數據量動態調整顯示間隔
+      interval: (() => {
+        const totalLength = currentChartData.value.categories.length;
+        if (totalLength > 99999) {
+          return Math.floor(totalLength / 20);
+        } else if (totalLength > 50000) {
+          return Math.floor(totalLength / 15);
+        } else if (totalLength > 10000) {
+          return Math.floor(totalLength / 10);
+        } else   {
+          return Math.floor(totalLength / 30);
+        }
+      })(),
       fontSize: 11,
       color: themeConfig.textColor,
       margin: 15,
@@ -590,20 +610,30 @@ const renderChart = () => {
     },
     // 隱藏線圖上的小圓點標記點
     symbol: "none",
+    // 大數據模式時啟用
+    large: isLargeDataset,
+    // 大數據模式時的閾值
+    largeThreshold: 10000,
+
+    sampling:
+      isLargeDataset && currentType.value === "line" ? "lttb" : undefined,
+
     // 只顯示最大值和最小值標記點
-    markPoint: {
-      data: [
-        { type: "max", name: "最大值" },
-        { type: "min", name: "最小值" },
-      ],
-      itemStyle: {
-        color: series.color,
-      },
-      label: {
-        color: "#fff",
-        fontSize: 10,
-      },
-    },
+    markPoint: isLargeDataset
+      ? undefined
+      : {
+          data: [
+            { type: "max", name: "最大值" },
+            { type: "min", name: "最小值" },
+          ],
+          itemStyle: {
+            color: series.color,
+          },
+          label: {
+            color: "#fff",
+            fontSize: 10,
+          },
+        },
   }));
   // 使用 notMerge: true 來完全替換配置，而不是合併
   chartInstance?.setOption(option, { notMerge: true });
