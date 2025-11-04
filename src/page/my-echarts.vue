@@ -181,6 +181,9 @@ const chartData = reactive({
   series: JSON.parse(JSON.stringify(defaultChartData.series)),
 });
 
+// 保存原始數據量（用於判斷是否需要特殊處理 Y 軸）
+const originalDataLength = ref(0);
+
 // 計算當前使用的圖表數據
 const currentChartData = computed(() => {
   return aggregatedChartData.value || chartData;
@@ -221,6 +224,9 @@ const handleDataImported = (data: {
   } else {
     importedFileName.value = "";
   }
+
+  // 保存原始數據量
+  originalDataLength.value = data.categories.length;
 
   // 更新圖表資料
   chartData.categories = [...data.categories];
@@ -560,6 +566,16 @@ const renderChart = () => {
         color: themeConfig.textColor,
       },
     },
+    // 🔥 針對 100 萬筆數據的月報表，設置 Y 軸間距為 5,000
+    minInterval: (() => {
+      if (
+        originalDataLength.value >= 1000000 &&
+        currentReportType.value === "monthly"
+      ) {
+        return 5000;
+      }
+      return undefined; // 其他情況使用默認值
+    })(),
     axisLabel: {
       formatter: (value: number) => {
         // 根據啟用的系列判斷格式化

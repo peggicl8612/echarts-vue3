@@ -190,12 +190,24 @@ const aggregateDataMonthly = (
     monthGroups[monthKey].push(index);
   });
 
-  // 獲取所有月份並排序
-  const allMonths = Object.keys(monthGroups).sort();
+  // 獲取所有月份並排序（使用更穩健的排序方法）
+  const allMonths = Object.keys(monthGroups).sort((a, b) => {
+    // 按年份和月份排序
+    const partsA = a.split("-").map(Number);
+    const partsB = b.split("-").map(Number);
+    const yearA = partsA[0] || 0;
+    const monthA = partsA[1] || 0;
+    const yearB = partsB[0] || 0;
+    const monthB = partsB[1] || 0;
+    if (yearA !== yearB) {
+      return yearA - yearB;
+    }
+    return monthA - monthB;
+  });
 
-  // 使用滑軌範圍選擇月份
+  // 使用滑軌範圍選擇月份（end + 1 作為 slice 的結束索引）
   const startMonthIndex = monthlyRange.value.start;
-  const endMonthIndex = Math.min(monthlyRange.value.end, allMonths.length);
+  const endMonthIndex = Math.min(monthlyRange.value.end + 1, allMonths.length);
   const selectedMonths = allMonths.slice(startMonthIndex, endMonthIndex);
 
   selectedMonths.forEach((monthKey) => {
@@ -299,12 +311,15 @@ const aggregateDataYearly = (
     yearGroups[yearKey].push(index);
   });
 
-  // 顯示2022、2023、2024年的資料
-  const years = ["2022", "2023", "2024"];
+  // 動態獲取所有年份並排序
+  const allYears = Object.keys(yearGroups).sort((a, b) => {
+    return parseInt(a) - parseInt(b);
+  });
 
-  years.forEach((year) => {
+  // 顯示所有年份的資料
+  allYears.forEach((year) => {
     const indices = yearGroups[year];
-    if (!indices) return;
+    if (!indices || indices.length === 0) return;
 
     yearlyData.categories.push(year);
 
